@@ -1,125 +1,75 @@
 # GitOps App of Apps
 
-An ArgoCD (OpenShift GitOps) repository using the **App of Apps** pattern to manage deployments declaratively. Deploy once, then add applications by dropping manifests into this repo.
+An ArgoCD (OpenShift GitOps) repository using the **App of Apps** pattern with an `ApplicationSet` to manage deployments declaratively. Deploy once, then add applications by simply dropping manifests into this repo — no ArgoCD Application YAMLs needed.
 
 ## Repository Structure
 
 ```
 gitops-app-of-apps/
-├── root-app.yaml              # Root ArgoCD Application — deploy this once
-├── apps/                      # ArgoCD Application manifests (one per app)
-│   └── sample-app.yaml        # Example: points ArgoCD at manifests/sample-app/
-└── manifests/                 # Workload manifests, organized by app
-    └── sample-app/
+├── root-app.yaml              # ApplicationSet — deploy this once
+└── manifests/                 # Drop your app manifests here
+    └── sample-app/            # Each subdirectory becomes an ArgoCD Application
         ├── deployment.yaml
         └── service.yaml
 ```
 
 ## How It Works
 
-The App of Apps pattern creates a hierarchy of ArgoCD Applications:
+The `ApplicationSet` uses a **Git directory generator** that watches `manifests/` for subdirectories. For every subdirectory it finds, ArgoCD automatically:
 
-1. **Root Application** (`root-app.yaml`) watches the `apps/` directory for ArgoCD `Application` manifests.
-2. Each manifest in `apps/` defines a child Application that points to a subdirectory under `manifests/`.
-3. ArgoCD syncs each child Application independently, deploying whatever Kubernetes/OpenShift resources it finds in the corresponding `manifests/<app-name>/` directory.
+1. Creates an ArgoCD Application named after the directory (e.g. `manifests/my-app/` becomes Application `my-app`)
+2. Deploys all Kubernetes/OpenShift resources found in that directory
+3. Targets a namespace matching the directory name (e.g. `my-app`), creating it if it doesn't exist
 
-When the root app syncs, it picks up any new, modified, or deleted Application manifests in `apps/` automatically. This means adding or removing an app from the cluster is just a git commit.
+No manual ArgoCD Application manifests are required. Just drop YAMLs into a directory and push.
 
 ## Getting Started
 
-### 1. Update the repo URL
-
-Replace the placeholder URL in `root-app.yaml` and every file under `apps/` with your actual repository URL:
-
-```
-repoURL: https://github.com/<your-org>/gitops-app-of-apps.git
-```
-
-### 2. Deploy the root application
-
-Apply the root application once to your OpenShift cluster:
+Apply the ApplicationSet once to your OpenShift cluster:
 
 ```bash
 oc apply -f root-app.yaml
 ```
 
-This creates the root ArgoCD Application in the `openshift-gitops` namespace. From this point on, everything is driven by git.
+This creates the ApplicationSet in the `openshift-gitops` namespace. From this point on, everything is driven by git.
 
 ## Adding a New Application
 
-### Step 1: Create a manifests directory
-
-Create a new directory under `manifests/` for your application and drop your Kubernetes/OpenShift YAML files into it:
+### Step 1: Create a directory and drop your manifests
 
 ```bash
 mkdir manifests/my-new-app
-# Copy or create your manifests
 cp deployment.yaml service.yaml route.yaml manifests/my-new-app/
 ```
 
 You can put any valid Kubernetes or OpenShift resources here — Deployments, Services, Routes, ConfigMaps, Secrets, CronJobs, etc.
 
-### Step 2: Create an ArgoCD Application manifest
-
-Add a YAML file in `apps/` that tells ArgoCD about your new application. Use the sample as a template:
-
-```yaml
-apiVersion: argoproj.io/v1alpha1
-kind: Application
-metadata:
-  name: my-new-app
-  namespace: openshift-gitops
-  finalizers:
-    - resources-finalizer.argocd.argoproj.io
-spec:
-  project: default
-  source:
-    repoURL: https://github.com/<your-org>/gitops-app-of-apps.git
-    targetRevision: main
-    path: manifests/my-new-app
-  destination:
-    server: https://kubernetes.default.svc
-    namespace: my-new-app
-  syncPolicy:
-    automated:
-      prune: true
-      selfHeal: true
-    syncOptions:
-      - CreateNamespace=true
-```
-
-Key fields to change per app:
-- `metadata.name` — unique name for the ArgoCD Application
-- `spec.source.path` — path to the app's manifests directory
-- `spec.destination.namespace` — target namespace on the cluster
-
-### Step 3: Commit and push
+### Step 2: Commit and push
 
 ```bash
-git add apps/my-new-app.yaml manifests/my-new-app/
+git add manifests/my-new-app/
 git commit -m "Add my-new-app"
 git push
 ```
 
-ArgoCD detects the change, creates the child Application, and syncs all the manifests to the cluster.
+ArgoCD detects the new directory, creates an Application for it, and syncs all the manifests to the cluster in the `my-new-app` namespace.
 
 ## Updating an Application
 
-Edit or add YAML files in the app's `manifests/<app-name>/` directory, commit, and push. ArgoCD syncs the changes automatically.
+Edit or add YAML files in `manifests/<app-name>/`, commit, and push. ArgoCD syncs the changes automatically.
 
 ## Removing an Application
 
-Delete the Application manifest from `apps/` and optionally remove its `manifests/` subdirectory:
+Delete the app's directory:
 
 ```bash
-rm apps/my-new-app.yaml
 rm -rf manifests/my-new-app/
 git add -A
 git commit -m "Remove my-new-app"
 git push
 ```
 
-The `resources-finalizer.argocd.argoproj.io` finalizer ensures ArgoCD cleans up all deployed resources from the cluster when the Application is deleted.
+The `resources-finalizer.argocd.argoproj.io` finalizer ensures ArgoCD cleans up all deployed resources from the cluster when the Application is removed.
 
 ## Sync Policies
 
@@ -130,14 +80,20 @@ All applications are configured with:
 | `automated` | ArgoCD syncs automatically when it detects a difference between git and the cluster |
 | `prune: true` | Resources removed from git are deleted from the cluster |
 | `selfHeal: true` | Manual changes made directly on the cluster are reverted to match git |
-| `CreateNamespace=true` | Target namespace is created if it doesn't exist |
+| `CreateNamespace=true` | Target namespace is created automatically if it doesn't exist |
+
+## Conventions
+
+| Convention | Detail |
+|------------|--------|
+| App name | Matches the directory name under `manifests/` |
+| Target namespace | Matches the directory name under `manifests/` |
+| Branch | `main` (change `targetRevision` in `root-app.yaml` to use a different branch) |
 
 ## Quick Reference
 
 | Task | Action |
 |------|--------|
-| Add an app | Create `apps/<name>.yaml` + `manifests/<name>/` with your YAMLs |
+| Add an app | Create `manifests/<name>/` and drop your YAMLs in it |
 | Update an app | Edit files in `manifests/<name>/` |
-| Remove an app | Delete `apps/<name>.yaml` and `manifests/<name>/` |
-| Change sync target | Edit `targetRevision` in the Application manifest (e.g., `main`, `staging`, a tag) |
-| Deploy to a different namespace | Edit `spec.destination.namespace` in the Application manifest |
+| Remove an app | Delete `manifests/<name>/` |
