@@ -1,7 +1,7 @@
 apiVersion: argoproj.io/v1alpha1
 kind: ApplicationSet
 metadata:
-  name: app-of-apps
+  name: operators
   namespace: openshift-gitops
 spec:
   goTemplate: true
@@ -11,7 +11,7 @@ spec:
         repoURL: https://github.com/ravishar-rh/gitops-app-of-apps.git
         revision: main
         directories:
-          - path: manifests/*
+          - path: operator-manifests/*
   template:
     metadata:
       name: "{{ .path.basename }}"

@@ -1,24 +1,34 @@
 # GitOps App of Apps
 
-An ArgoCD (OpenShift GitOps) repository using the **App of Apps** pattern with an `ApplicationSet` to manage deployments declaratively. Deploy once, then add applications by simply dropping manifests into this repo — no ArgoCD Application YAMLs needed.
+An ArgoCD (OpenShift GitOps) repository using the **App of Apps** pattern with `ApplicationSets` to manage deployments declaratively. Deploy once, then add applications by simply dropping manifests into this repo — no ArgoCD Application YAMLs needed.
 
 ## Repository Structure
 
 ```
 gitops-app-of-apps/
-├── root-app.yaml              # ApplicationSet — deploy this once
-└── manifests/                 # Drop your app manifests here
-    ├── acm/                   # ACM operator install (Namespace, OperatorGroup, Subscription, RBAC)
-    └── acm-hub/               # MultiClusterHub CR (separate app — needs the CRD from acm first)
+├── operators-appset.yaml          # ApplicationSet for operators — deploy this once
+├── workloads-appset.yaml          # ApplicationSet for app workloads — deploy this once
+├── operator-manifests/            # Operator installs (one subdirectory per operator)
+│   ├── acm/                       # ACM operator (Namespace, OperatorGroup, Subscription, RBAC)
+│   └── acm-hub/                   # MultiClusterHub CR (separate — needs the CRD from acm first)
+└── workloads/                     # Application workloads (one subdirectory per app)
+    └── demo-app/                  # ESO demo app (ExternalSecret + Deployment + Service)
 ```
 
 ## How It Works
 
-The `ApplicationSet` uses a **Git directory generator** that watches `manifests/` for subdirectories. For every subdirectory it finds, ArgoCD automatically:
+Two `ApplicationSets` each use a **Git directory generator** to watch their respective directories:
 
-1. Creates an ArgoCD Application named after the directory (e.g. `manifests/my-app/` becomes Application `my-app`)
+| ApplicationSet | File | Watches | Purpose |
+|----------------|------|---------|---------|
+| `operators` | `operators-appset.yaml` | `operator-manifests/*` | Operator installs (ACM, ESO, etc.) |
+| `workloads` | `workloads-appset.yaml` | `workloads/*` | Application workloads |
+
+For every subdirectory found, ArgoCD automatically:
+
+1. Creates an ArgoCD Application named after the directory
 2. Deploys all Kubernetes/OpenShift resources found in that directory
-3. Targets a namespace matching the directory name (e.g. `my-app`), creating it if it doesn't exist
+3. Targets a namespace matching the directory name, creating it if it doesn't exist
 
 No manual ArgoCD Application manifests are required. Just drop YAMLs into a directory and push.
 
@@ -38,7 +48,7 @@ This is the simplest approach and works for all current and future apps without 
 
 ### Option B: Scoped Permissions (least-privilege)
 
-This repo includes scoped RBAC manifests in `manifests/acm/` (`clusterrole.yaml` and `clusterrolebinding.yaml`) that grant only the permissions needed for ACM:
+This repo includes scoped RBAC manifests in `operator-manifests/acm/` (`clusterrole.yaml` and `clusterrolebinding.yaml`) that grant only the permissions needed for ACM:
 
 | API Group | Resources |
 |-----------|-----------|
@@ -49,8 +59,8 @@ This repo includes scoped RBAC manifests in `manifests/acm/` (`clusterrole.yaml`
 Since ArgoCD needs these permissions before it can sync, apply them manually the first time:
 
 ```bash
-oc apply -f manifests/acm/clusterrole.yaml
-oc apply -f manifests/acm/clusterrolebinding.yaml
+oc apply -f operator-manifests/acm/clusterrole.yaml
+oc apply -f operator-manifests/acm/clusterrolebinding.yaml
 ```
 
 After the initial apply, ArgoCD manages these RBAC resources going forward via git.
@@ -70,49 +80,67 @@ oc delete clusterrolebinding argocd-acm-manager
 oc delete clusterrole argocd-acm-manager
 ```
 
-Then remove `clusterrole.yaml` and `clusterrolebinding.yaml` from `manifests/acm/` in this repo, commit, and push.
+Then remove `clusterrole.yaml` and `clusterrolebinding.yaml` from `operator-manifests/acm/` in this repo, commit, and push.
 
 ## Getting Started
 
-Apply the ApplicationSet once to your OpenShift cluster:
+Apply both ApplicationSets once to your OpenShift cluster:
 
 ```bash
-oc apply -f root-app.yaml
+oc apply -f operators-appset.yaml
+oc apply -f workloads-appset.yaml
 ```
 
-This creates the ApplicationSet in the `openshift-gitops` namespace. From this point on, everything is driven by git.
+This creates the ApplicationSets in the `openshift-gitops` namespace. From this point on, everything is driven by git.
 
-## Adding a New Application
+## Adding a New Operator
 
 ### Step 1: Create a directory and drop your manifests
 
 ```bash
-mkdir manifests/my-new-app
-cp deployment.yaml service.yaml route.yaml manifests/my-new-app/
+mkdir operator-manifests/my-operator
+# Add Namespace, OperatorGroup, Subscription YAMLs
 ```
-
-You can put any valid Kubernetes or OpenShift resources here — Deployments, Services, Routes, ConfigMaps, Secrets, CronJobs, etc.
 
 ### Step 2: Commit and push
 
 ```bash
-git add manifests/my-new-app/
+git add operator-manifests/my-operator/
+git commit -m "Add my-operator"
+git push
+```
+
+## Adding a New Application Workload
+
+### Step 1: Create a directory and drop your manifests
+
+```bash
+mkdir workloads/my-new-app
+cp deployment.yaml service.yaml route.yaml workloads/my-new-app/
+```
+
+You can put any valid Kubernetes or OpenShift resources here — Deployments, Services, Routes, ConfigMaps, Secrets, ExternalSecrets, CronJobs, etc.
+
+### Step 2: Commit and push
+
+```bash
+git add workloads/my-new-app/
 git commit -m "Add my-new-app"
 git push
 ```
 
-ArgoCD detects the new directory, creates an Application for it, and syncs all the manifests to the cluster in the `my-new-app` namespace.
+ArgoCD detects the new directory, creates an Application for it, and syncs all the manifests to the cluster.
 
 ## Updating an Application
 
-Edit or add YAML files in `manifests/<app-name>/`, commit, and push. ArgoCD syncs the changes automatically.
+Edit or add YAML files in the app's directory, commit, and push. ArgoCD syncs the changes automatically.
 
 ## Removing an Application
 
 Delete the app's directory:
 
 ```bash
-rm -rf manifests/my-new-app/
+rm -rf workloads/my-new-app/
 git add -A
 git commit -m "Remove my-new-app"
 git push
@@ -135,14 +163,15 @@ All applications are configured with:
 
 | Convention | Detail |
 |------------|--------|
-| App name | Matches the directory name under `manifests/` |
-| Target namespace | Matches the directory name under `manifests/` |
-| Branch | `main` (change `targetRevision` in `root-app.yaml` to use a different branch) |
+| App name | Matches the directory name under `operator-manifests/` or `workloads/` |
+| Target namespace | Matches the directory name |
+| Branch | `main` (change `targetRevision` in the ApplicationSet to use a different branch) |
 
 ## Quick Reference
 
 | Task | Action |
 |------|--------|
-| Add an app | Create `manifests/<name>/` and drop your YAMLs in it |
-| Update an app | Edit files in `manifests/<name>/` |
-| Remove an app | Delete `manifests/<name>/` |
+| Add an operator | Create `operator-manifests/<name>/` and drop your YAMLs in it |
+| Add a workload | Create `workloads/<name>/` and drop your YAMLs in it |
+| Update an app | Edit files in its directory |
+| Remove an app | Delete its directory |
