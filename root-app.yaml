@@ -6,7 +6,7 @@ metadata:
 spec:
   project: default
   source:
-    repoURL: https://github.com/<your-org>/gitops-app-of-apps.git
+    repoURL: https://github.com/ravishar-rh/gitops-app-of-apps.git
     targetRevision: main
     path: apps
   destination:
