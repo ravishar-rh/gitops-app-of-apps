@@ -1,0 +1,9 @@
+apiVersion: cluster.open-cluster-management.io/v1beta1
+kind: Restore
+metadata:
+  name: restore-acm
+  namespace: open-cluster-management-backup
+spec:
+  veleroManagedClustersBackupName: latest
+  veleroCredentialsBackupName: latest
+  veleroResourcesBackupName: latest

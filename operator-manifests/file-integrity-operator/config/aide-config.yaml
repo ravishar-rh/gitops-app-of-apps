@@ -1,0 +1,38 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: aide-custom-config
+  namespace: openshift-file-integrity
+  labels:
+    file-integrity.openshift.io/aide-conf: ""
+data:
+  config: |
+    @@define DBDIR /hostroot/etc/kubernetes
+    @@define LOGDIR /hostroot/etc/kubernetes
+    database=file:@@{DBDIR}/aide.db.gz
+    database_out=file:@@{DBDIR}/aide.db.gz
+    gzip_dbout=yes
+    verbose=5
+    report_url=file:@@{LOGDIR}/aide.log
+    report_url=stdout
+
+    CONTENT_EX = sha512+ftype+p+u+g+n+acl+selinux+xattrs
+    DATAONLY = p+n+u+g+s+acl+selinux+xattrs+sha512
+
+    /hostroot/boot/    CONTENT_EX
+    /hostroot/root/    CONTENT_EX
+    /hostroot/usr/     CONTENT_EX
+    /hostroot/etc/     CONTENT_EX
+    /hostroot/opt/     CONTENT_EX
+
+    !/hostroot/usr/src/
+    !/hostroot/etc/NetworkManager/system-connections/
+    !/hostroot/etc/mtab$
+    !/hostroot/etc/.*~
+    !/hostroot/etc/kubernetes/static-pod-resources
+    !/hostroot/etc/kubernetes/aide.*
+    !/hostroot/etc/docker/certs.d
+    !/hostroot/etc/selinux/targeted
+    !/hostroot/etc/openvswitch/conf.db
+    !/hostroot/etc/kubernetes/cni/net.d
+    !/hostroot/etc/machine-config-daemon/currentconfig

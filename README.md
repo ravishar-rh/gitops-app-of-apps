@@ -10,7 +10,11 @@ gitops-app-of-apps/
 ├── workloads-appset.yaml          # ApplicationSet for app workloads — deploy this once
 ├── operator-manifests/            # Operator installs (one subdirectory per operator)
 │   ├── acm/                       # ACM operator (Namespace, OperatorGroup, Subscription, RBAC)
-│   └── acm-hub/                   # MultiClusterHub CR (separate — needs the CRD from acm first)
+│   ├── acm-hub/                   # MultiClusterHub CR (separate — needs the CRD from acm first)
+│   ├── logging/                   # Cluster Logging operator
+│   ├── compliance-operator/       # Compliance Operator + CIS/NIST scan configs
+│   ├── file-integrity-operator/   # File Integrity Operator + AIDE node monitoring
+│   └── oadp-operator/             # OADP operator + ACM hub backup (ROSA HCP/STS)
 └── workloads/                     # Application workloads (one subdirectory per app)
     └── demo-app/                  # ESO demo app (ExternalSecret + Deployment + Service)
 ```

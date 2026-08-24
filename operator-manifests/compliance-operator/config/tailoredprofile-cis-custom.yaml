@@ -1,0 +1,20 @@
+apiVersion: compliance.openshift.io/v1alpha1
+kind: TailoredProfile
+metadata:
+  name: cis-custom
+  namespace: openshift-compliance
+  annotations:
+    compliance.openshift.io/product-type: Platform
+spec:
+  extends: ocp4-cis
+  title: Customized CIS Benchmark Profile
+  description: >-
+    CIS benchmark profile with site-specific rule adjustments.
+    Modify the disableRules and enableRules lists to match
+    your organization's requirements.
+  disableRules:
+    - name: ocp4-scc-limit-container-allowed-capabilities
+      rationale: Third-party software requires custom SCC with additional capabilities
+  # enableRules:
+  #   - name: ocp4-some-additional-rule
+  #     rationale: Required by internal security policy
