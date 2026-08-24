@@ -3,6 +3,4 @@ kind: OperatorGroup
 metadata:
   name: compliance-operator
   namespace: openshift-compliance
-spec:
-  targetNamespaces:
-    - openshift-compliance
+spec: {}
