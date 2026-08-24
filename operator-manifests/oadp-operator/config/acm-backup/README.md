@@ -25,7 +25,7 @@ ROSA HCP clusters use **AWS Security Token Service (STS)** with OIDC-based web i
 
 ### Why OADP Is Not Auto-Installed on STS
 
-On non-STS clusters, enabling `cluster-backup: true` on the MultiClusterHub causes the cluster-backup-operator to automatically install OADP in `open-cluster-management-backup`. On STS clusters, the operator **cannot** configure the IAM role automatically, so it creates a ConfigMap (`acm-redhat-oadp-operator-subscription`) with the OADP channel and version details, and waits for OADP to become available. In this setup, the OADP operator from the `operator/` directory uses an AllNamespaces OperatorGroup, so it already watches `open-cluster-management-backup` -- no second Subscription is needed.
+On non-STS clusters, enabling `cluster-backup: true` on the MultiClusterHub causes the cluster-backup-operator to automatically install OADP in `open-cluster-management-backup`. On STS clusters, the operator **cannot** configure the IAM role automatically, so it creates a ConfigMap (`acm-redhat-oadp-operator-subscription`) with the OADP channel and version details, and waits for OADP to become available. ACM requires the OADP operator to be installed **in** `open-cluster-management-backup`. OADP only supports OwnNamespace (AllNamespaces is not supported), so this directory includes its own OperatorGroup and Subscription. Use the same `stable` channel as `operator/` so CRD versions match.
 
 ### How STS Authentication Works
 
@@ -42,16 +42,16 @@ On non-STS clusters, enabling `cluster-backup: true` on the MultiClusterHub caus
 The **cluster-backup-operator** is an ACM component (not installed by default) that orchestrates hub cluster backups. When enabled, it:
 
 1. Uses the `open-cluster-management-backup` namespace (created by our manifests or by ACM itself)
-2. On STS clusters: creates a ConfigMap (`acm-redhat-oadp-operator-subscription`) with OADP channel and version details, but does **not** auto-install OADP -- the OADP operator is installed via the `operator/` directory with an AllNamespaces OperatorGroup so it watches this namespace too
+2. On STS clusters: creates a ConfigMap (`acm-redhat-oadp-operator-subscription`) with OADP channel and version details, but does **not** auto-install OADP -- this directory installs OADP in `open-cluster-management-backup` with an OwnNamespace OperatorGroup
 3. Watches for `BackupSchedule` resources and translates them into Velero schedules
 4. Manages backup collision detection across multiple hub clusters
 5. Handles the restore lifecycle including managed cluster re-activation
 
 The operator is enabled by setting `cluster-backup: true` on the `MultiClusterHub` resource.
 
-### Shared OADP Operator
+### OADP Operator in the Backup Namespace
 
-The OADP operator is installed once in `openshift-adp` with an **AllNamespaces** OperatorGroup, so it watches all namespaces including `open-cluster-management-backup`. This avoids a duplicate Subscription and keeps the App of Apps pattern clean -- a single OADP operator serves both general workloads and ACM backup.
+OADP only supports **OwnNamespace** (`AllNamespaces` is not supported in the CSV). ACM also checks that the OADP operator is installed **in** `open-cluster-management-backup`, so this directory deploys a second OADP OperatorGroup and Subscription there. Both subscriptions use the `stable` channel so CRD versions stay aligned.
 
 The `DataProtectionApplication` for ACM backup is created in `open-cluster-management-backup`, keeping its Velero instance and backup data isolated from any general-purpose DPA in `openshift-adp`.
 
@@ -285,18 +285,19 @@ aws s3api put-bucket-versioning \
 ### Step-by-step
 
 ```bash
-# Step 1: Ensure the OADP operator is installed (from operator/ directory)
-# The OperatorGroup uses AllNamespaces mode so it watches open-cluster-management-backup
+# Step 1: Ensure the general-purpose OADP operator is installed (from operator/ directory)
 oc apply -k oadp-operator/operator/
 
-# Step 2: Create the backup namespace and enable cluster-backup on MultiClusterHub
+# Step 2: Create the backup namespace, OADP OwnNamespace install, and enable cluster-backup
 oc apply -f oadp-subscription.yaml
+oc apply -f operatorgroup.yaml
+oc apply -f subscription.yaml
 oc apply -f multiclusterhub-patch.yaml
 
 # Step 3: Wait for the OADP operator to be ready in the backup namespace
 oc wait --for=condition=Available deployment \
   -l app.kubernetes.io/name=oadp-operator-controller-manager \
-  -n openshift-adp --timeout=300s
+  -n open-cluster-management-backup --timeout=300s
 
 # Step 4: Create ExternalSecret (syncs role_arn from AWS Secrets Manager)
 oc apply -f credentials-secret.yaml
@@ -404,14 +405,14 @@ To promote the passive hub to primary, change `veleroManagedClustersBackupName` 
 
 ### BackupSchedule stuck in Pending
 
-The backup component remains Pending until OADP is available and watching `open-cluster-management-backup`. Verify the OADP operator from `openshift-adp` is running with AllNamespaces scope:
+The backup component remains Pending until OADP is installed in `open-cluster-management-backup`. Verify the operator in that namespace:
 
 ```bash
-# Verify the OADP operator is installed and running
-oc get csv -n openshift-adp | grep oadp
+# Verify the OADP operator is installed and running in the backup namespace
+oc get csv -n open-cluster-management-backup | grep oadp
 
-# Verify the OperatorGroup is AllNamespaces (no targetNamespaces)
-oc get operatorgroup -n openshift-adp -o yaml
+# Verify the OperatorGroup is OwnNamespace
+oc get operatorgroup -n open-cluster-management-backup -o yaml
 
 # Check if ACM created the subscription hint ConfigMap
 oc get configmap acm-redhat-oadp-operator-subscription \
@@ -490,7 +491,7 @@ aws secretsmanager get-secret-value --secret-id oadp/acm-backup-credentials
 - **No Data Mover:** The Data Mover feature is not supported on ROSA clusters
 - **No cross-region restore:** Restoring backed-up data to a different AWS region is not supported on STS clusters
 - **No backup images:** `backupImages` is set to `false` because ROSA HCP does not expose the internal image registry
-- **Single OADP operator:** A single OADP operator in `openshift-adp` with AllNamespaces scope serves both namespaces. Do not install a second OADP Subscription in `open-cluster-management-backup`
+- **OwnNamespace only:** OADP does not support AllNamespaces. Install matching-channel OADP operators in `openshift-adp` (general workloads) and `open-cluster-management-backup` (ACM backup). Do not mix channels/versions -- CRDs are cluster-scoped.
 - **IAM role per cluster:** Each ROSA HCP cluster needs its own IAM role with a trust policy referencing its unique OIDC endpoint. The same role cannot be shared across clusters
 
 ## References

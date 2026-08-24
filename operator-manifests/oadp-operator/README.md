@@ -82,7 +82,7 @@ A **Restore** CR recovers resources from a specific Backup. You can restore ever
 | OADP | 1.6.x (stable channel) |
 | Velero | 1.18 |
 | Authentication | AWS STS (OIDC + IRSA) |
-| OperatorGroup | AllNamespaces |
+| OperatorGroup | OwnNamespace |
 | Catalog Source | redhat-operators |
 
 ## Directory Structure
@@ -94,15 +94,17 @@ oadp-operator/
 ├── operator/                              # OLM deployment manifests
 │   ├── kustomization.yaml
 │   ├── namespace.yaml                     # openshift-adp namespace
-│   ├── operatorgroup.yaml                # AllNamespaces scope
+│   ├── operatorgroup.yaml                # OwnNamespace in openshift-adp
 │   └── subscription.yaml
 └── config/                                # backup configuration
     ├── kustomization.yaml
     └── acm-backup/                        # ACM hub cluster backup (ROSA HCP / STS)
         ├── README.md                       # ACM backup concepts, STS setup guide
         ├── kustomization.yaml
-        ├── multiclusterhub-patch.yaml
         ├── oadp-subscription.yaml          # Namespace for backup
+        ├── operatorgroup.yaml              # OwnNamespace in backup namespace
+        ├── subscription.yaml               # OADP Subscription in backup namespace
+        ├── multiclusterhub-patch.yaml
         ├── credentials-secret.yaml         # ExternalSecret with role_arn (STS)
         ├── dataprotectionapplication.yaml
         ├── backupschedule.yaml
@@ -111,8 +113,8 @@ oadp-operator/
         └── iam-permissions-policy.json     # IAM S3+EC2 permissions template
 ```
 
-- **`operator/`** -- OLM resources to install the OADP operator (Namespace, OperatorGroup, Subscription). The OperatorGroup uses AllNamespaces mode so the operator watches both `openshift-adp` and `open-cluster-management-backup`. Deploy this first.
-- **`config/acm-backup/`** -- ACM hub cluster backup configuration for ROSA HCP with STS. Creates the backup namespace, STS credentials via ExternalSecret, IAM policy templates, and DPA. See [acm-backup/README.md](config/acm-backup/README.md) for full documentation, IAM role setup, and deployment steps.
+- **`operator/`** -- OLM resources to install the OADP operator in `openshift-adp` (Namespace, OperatorGroup, Subscription). OADP only supports **OwnNamespace**, so this instance watches `openshift-adp` only. Deploy this first.
+- **`config/acm-backup/`** -- ACM hub cluster backup for ROSA HCP with STS: backup namespace, OwnNamespace OADP install, STS credentials via ExternalSecret, DPA, and BackupSchedule. See [acm-backup/README.md](config/acm-backup/README.md) for IAM role setup and deployment steps.
 
 ## Deployment
 
@@ -158,7 +160,7 @@ oc apply -k oadp-operator/config/
 
 ## ROSA HCP + STS Notes
 
-- The OperatorGroup is set to **AllNamespaces** so a single OADP operator serves both `openshift-adp` (general workloads) and `open-cluster-management-backup` (ACM backup)
+- OADP only supports **OwnNamespace**. The operator in `openshift-adp` watches that namespace; ACM backup installs a second same-channel OADP operator in `open-cluster-management-backup`
 - OADP on ROSA STS uses `role_arn` + `web_identity_token_file` instead of static AWS credentials -- see [acm-backup/README.md](config/acm-backup/README.md) for IAM role setup
 - **Node agent (Kopia/Restic) is not supported** on ROSA STS -- only CSI snapshots and native EBS snapshots
 - **Data Mover is not supported** on ROSA clusters
