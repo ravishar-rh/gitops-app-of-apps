@@ -12,3 +12,4 @@ spec:
   config:
     nodeSelector:
       kubernetes.io/os: linux
+    affinity: {}
