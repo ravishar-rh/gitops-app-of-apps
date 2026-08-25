@@ -109,6 +109,10 @@ compliance-operator/
     ├── scansettingbinding-moderate.yaml      # NIST 800-53 Moderate binding
     ├── scansettingbinding-pci-dss.yaml      # PCI-DSS binding (commented out)
     └── tailoredprofile-cis-custom.yaml      # custom CIS profile example (commented out)
+├── config/
+│   ├── ...
+│   ├── scansettingbinding-soc2.yaml        # SOC 2 composite binding (CIS + Moderate)
+│   └── tailoredprofile-soc2.yaml           # SOC 2 tailored baseline
 ```
 
 - **`operator/`** -- OLM resources to install the Compliance Operator. Deploy this first.
@@ -164,44 +168,180 @@ Binds `ocp4-moderate` (platform) and `ocp4-moderate-node` (node) profiles. Requi
 
 Commented out by default. Uncomment in `config/kustomization.yaml` if you process payment card data. Supports both v3.2.1 and v4.0 profiles.
 
+### SOC 2 Compliance Mapping (`scansettingbinding-soc2.yaml`)
+
+Combines both `ocp4-cis` and `ocp4-moderate` profiles under a single binding with a `internal-control-id: SOC2-CC6-LOGICAL-ACCESS` label. This label enables downstream GRC tools to ingest and map scan results to SOC 2 Common Criteria controls.
+
+### SOC 2 Tailored Baseline (`tailoredprofile-soc2.yaml`)
+
+A TailoredProfile extending `ocp4-cis` with SOC 2-specific adjustments. Rules handled by the cloud provider's IAM layer are disabled, and rules requiring manual auditor verification are flagged as `manualRules`. Customize the `disableRules` and `manualRules` lists to match your organization's control mapping.
+
 ### Custom CIS Profile (`tailoredprofile-cis-custom.yaml`)
 
 Commented out by default. Example TailoredProfile extending `ocp4-cis` with rule exceptions. Customize this to disable rules that conflict with your environment.
 
 ## Working with Results
 
-### View scan status
+### Where Reports Are Generated
+
+Compliance scan results are stored as Kubernetes custom resources in the `openshift-compliance` namespace. The operator creates the following resources after each scan:
+
+| Resource | Description |
+|---|---|
+| **ComplianceSuite** | Top-level grouping for all scans triggered by a ScanSettingBinding |
+| **ComplianceScan** | Individual scan targeting a specific profile on a specific set of nodes |
+| **ComplianceCheckResult** | Per-rule result (PASS, FAIL, MANUAL, NOT-APPLICABLE, INCONSISTENT, ERROR) |
+| **ComplianceRemediation** | Auto-generated fix (MachineConfig or K8s patch) for failed checks |
+
+Raw scan results in ARF (Asset Reporting Format) and XCCDF XML format are persisted to PVCs in the `openshift-compliance` namespace, controlled by the `rawResultStorage` settings in your ScanSetting (default: 1Gi, 3 rotations).
+
+### Viewing Results via CLI
 
 ```bash
+# Check scan suite status (DONE, RUNNING, ERROR)
 oc get compliancesuites -n openshift-compliance
-```
 
-### View all check results
+# List individual scans and their phase
+oc get compliancescans -n openshift-compliance
 
-```bash
+# View all check results
 oc get compliancecheckresults -n openshift-compliance
-```
 
-### View only failures
-
-```bash
+# View only failures
 oc get compliancecheckresults -n openshift-compliance \
   -l compliance.openshift.io/check-status=FAIL
-```
 
-### View available remediations
+# View failures for a specific suite (e.g., SOC 2)
+oc get compliancecheckresults -n openshift-compliance \
+  -l compliance.openshift.io/suite=soc2-compliance-mapping,compliance.openshift.io/check-status=FAIL
 
-```bash
+# Get details on a specific check result
+oc describe compliancecheckresult <result-name> -n openshift-compliance
+
+# View available remediations
 oc get complianceremediations -n openshift-compliance
 ```
 
-### Apply a specific remediation
+### Viewing Results via OpenShift Console
+
+Navigate to **Installed Operators > Compliance Operator** in the OpenShift web console. From there you can browse:
+
+- **ComplianceSuites** -- overview of all scan suites and their status
+- **ComplianceCheckResults** -- drill into individual rule results with descriptions and remediation guidance
+- **ComplianceRemediations** -- review and apply fixes directly from the console
+
+### Extracting Raw Reports
+
+Raw ARF/XCCDF reports can be extracted for offline analysis or import into external tools:
 
 ```bash
+# List raw result PVCs
+oc get pvc -n openshift-compliance
+
+# Extract results from a specific scan (creates XML files locally)
+SCAN_NAME="soc2-compliance-mapping-ocp4-cis"
+POD=$(oc get pods -n openshift-compliance -l compliancescan=$SCAN_NAME \
+  -o jsonpath='{.items[0].metadata.name}')
+oc cp openshift-compliance/$POD:/results ./compliance-reports/
+```
+
+### Applying Remediations
+
+```bash
+# Apply a specific remediation
 oc patch complianceremediations/<remediation-name> \
   -n openshift-compliance --type merge \
   -p '{"spec":{"apply":true}}'
+
+# Re-scan after applying remediations to verify fixes
+oc annotate compliancesuites/<suite-name> \
+  -n openshift-compliance compliance.openshift.io/rescan= --overwrite
 ```
+
+## Integrating with External Systems
+
+### Exporting Results to GRC / SIEM Tools
+
+The Compliance Operator stores results as Kubernetes resources with structured labels, making them straightforward to export to external governance, risk, and compliance (GRC) or SIEM platforms.
+
+#### Using the OpenShift API
+
+Query ComplianceCheckResults directly from any tool that speaks the Kubernetes API:
+
+```bash
+# Export all FAIL results as JSON
+oc get compliancecheckresults -n openshift-compliance \
+  -l compliance.openshift.io/check-status=FAIL \
+  -o json > compliance-failures.json
+
+# Export results for a specific control mapping
+oc get compliancecheckresults -n openshift-compliance \
+  -l compliance.openshift.io/suite=soc2-compliance-mapping \
+  -o json > soc2-results.json
+```
+
+#### Using the `oc-compliance` Plugin
+
+The `oc-compliance` plugin provides purpose-built commands for extracting and converting compliance data:
+
+```bash
+# Install the plugin
+oc krew install compliance
+
+# Fetch raw results for a scan
+oc compliance fetch-raw scansettingbindings soc2-compliance-mapping \
+  -o ./raw-results/
+
+# Generate an HTML report
+oc compliance view-result scansettingbindings soc2-compliance-mapping \
+  --output html > report.html
+```
+
+#### Label-Based Filtering for GRC Ingestion
+
+The SOC 2 ScanSettingBinding includes metadata labels (e.g., `internal-control-id: SOC2-CC6-LOGICAL-ACCESS`) that downstream GRC tools can use to automatically map findings to your control framework. When building integrations:
+
+1. Query by label: `compliance.openshift.io/suite=soc2-compliance-mapping`
+2. Map the `internal-control-id` label to your GRC tool's control taxonomy
+3. Use the `compliance.openshift.io/check-status` label to filter by result severity
+
+#### Splunk / Elasticsearch Integration
+
+Forward compliance events using a cluster log forwarder or event router:
+
+1. **OpenShift Logging** -- configure a `ClusterLogForwarder` to send audit logs (which include compliance events) to Splunk or Elasticsearch
+2. **Event Router** -- deploy the OpenShift Event Router to forward Kubernetes events (including compliance scan lifecycle events) to your log aggregator
+3. **CronJob Export** -- schedule a periodic job that queries ComplianceCheckResults and pushes them to your SIEM:
+
+```yaml
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: compliance-exporter
+  namespace: openshift-compliance
+spec:
+  schedule: "0 2 * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+            - name: exporter
+              image: registry.redhat.io/openshift4/ose-cli:latest
+              command:
+                - /bin/sh
+                - -c
+                - |
+                  oc get compliancecheckresults -n openshift-compliance \
+                    -o json | curl -X POST -H "Content-Type: application/json" \
+                    -d @- https://your-siem-endpoint/api/compliance
+          restartPolicy: OnFailure
+          serviceAccountName: compliance-exporter
+```
+
+#### Red Hat Advanced Cluster Security (ACS / StackRox)
+
+If you run ACS, it natively integrates with the Compliance Operator. ACS pulls ComplianceCheckResults and displays them in its compliance dashboard alongside vulnerability and runtime data. No additional export configuration is needed -- ACS discovers the operator automatically.
 
 ## References
 
