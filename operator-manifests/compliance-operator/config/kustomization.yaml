@@ -4,6 +4,8 @@ resources:
   - scansetting.yaml
   - scansettingbinding-cis.yaml
   - scansettingbinding-moderate.yaml
+  - scansettingbinding-soc2.yaml
+  - tailoredprofile-soc2.yaml
   # Uncomment the profiles you need:
   # - scansettingbinding-pci-dss.yaml
   # - tailoredprofile-cis-custom.yaml

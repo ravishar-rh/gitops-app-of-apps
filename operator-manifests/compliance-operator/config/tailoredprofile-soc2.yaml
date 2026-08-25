@@ -1,0 +1,20 @@
+apiVersion: compliance.openshift.io/v1alpha1
+kind: TailoredProfile
+metadata:
+  name: soc2-technical-baseline
+  namespace: openshift-compliance
+  annotations:
+    compliance.openshift.io/product-type: Platform
+spec:
+  extends: ocp4-cis
+  title: "OpenShift SOC 2 Tailored Infrastructure Profile"
+  description: >-
+    Aggregated platform rules mapped directly to SOC 2 Common Criteria.
+    Uses CIS as the baseline structure with rules adjusted for SOC 2
+    audit requirements.
+  disableRules:
+    - name: ocp4-unnecessary-rule-example
+      rationale: "This technical configuration is handled by our cloud provider's underlying IAM layer."
+  manualRules:
+    - name: ocp4-scc-limit-container-allowed-capabilities
+      rationale: "Auditor must manually verify third-party security exceptions."
