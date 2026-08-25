@@ -1,6 +1,8 @@
 apiVersion: cluster.open-cluster-management.io/v1beta1
 kind: BackupSchedule
 metadata:
+  annotations:
+    argocd.argoproj.io/sync-wave: "5"
   name: schedule-acm
   namespace: open-cluster-management-backup
 spec:

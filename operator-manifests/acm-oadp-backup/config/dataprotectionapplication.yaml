@@ -1,6 +1,8 @@
 apiVersion: oadp.openshift.io/v1alpha1
 kind: DataProtectionApplication
 metadata:
+  annotations:
+    argocd.argoproj.io/sync-wave: "4"
   name: dpa-acm
   namespace: open-cluster-management-backup
 spec:
