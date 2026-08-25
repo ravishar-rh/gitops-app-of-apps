@@ -9,3 +9,6 @@ spec:
   name: compliance-operator
   source: redhat-operators
   sourceNamespace: openshift-marketplace
+  config:
+    nodeSelector:
+      kubernetes.io/os: linux
