@@ -3,4 +3,8 @@ kind: MultiClusterHub
 metadata:
   name: multiclusterhub
   namespace: open-cluster-management
-spec: {}
+spec:
+  overrides:
+    components:
+      - name: cluster-backup
+        enabled: true
