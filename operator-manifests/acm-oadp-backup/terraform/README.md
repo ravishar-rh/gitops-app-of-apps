@@ -1,8 +1,8 @@
 # ACM OADP Backup - Terraform Automation
 
-Terraform automation for end-to-end ACM hub cluster backup and restore on ROSA HCP with STS. A single `terraform apply` creates all AWS infrastructure, installs the OADP operator, configures backups to S3, and enables the ACM cluster-backup component.
+Terraform automation for the AWS infrastructure required by ACM hub cluster backup on ROSA HCP with STS. Terraform manages the AWS side (S3, IAM, Secrets Manager), while ArgoCD deploys the Kubernetes resources (OADP operator, DPA, BackupSchedule) via the `operator-manifests/acm-oadp-backup/` manifests.
 
-## What Terraform Creates
+## What Terraform Manages
 
 ### AWS Resources
 
@@ -13,17 +13,22 @@ Terraform automation for end-to-end ACM hub cluster backup and restore on ROSA H
 | **IAM Policy** | S3 and EC2 permissions scoped to the backup bucket |
 | **Secrets Manager Secret** | Stores the IAM role ARN for ExternalSecrets to sync |
 
-### OpenShift Resources
+### OpenShift (via `oc` CLI)
 
 | Resource | Description |
 |---|---|
-| **Namespace** | `open-cluster-management-backup` |
-| **OperatorGroup** | OwnNamespace install mode |
-| **Subscription** | OADP operator from redhat-operators catalog |
-| **ExternalSecret** | Syncs IAM role ARN from Secrets Manager to a Kubernetes secret |
-| **DataProtectionApplication** | Velero config with aws + openshift plugins, S3 backend |
-| **BackupSchedule** | ACM backup every 6 hours, 30-day retention |
-| **MultiClusterHub patch** | Enables the cluster-backup component |
+| **MultiClusterHub patch** | Enables the cluster-backup component (optional) |
+| **Restore** | Triggers an ACM restore during disaster recovery (optional) |
+
+### What ArgoCD Manages (not Terraform)
+
+The following are deployed by ArgoCD from the `operator-manifests/acm-oadp-backup/` directory:
+
+- Namespace (`open-cluster-management-backup`)
+- OperatorGroup and Subscription (OADP operator)
+- ExternalSecret (syncs IAM role ARN from Secrets Manager)
+- DataProtectionApplication (Velero config with S3 backend)
+- BackupSchedule (every 6 hours, 30-day retention)
 
 ## Prerequisites
 
@@ -77,12 +82,9 @@ Terraform will:
 1. Create the S3 bucket with encryption, versioning, and lifecycle policies
 2. Create the IAM role and policy with OIDC trust for the cluster
 3. Store the role ARN in Secrets Manager
-4. Create the OADP namespace, OperatorGroup, and Subscription
-5. Wait for the OADP operator to become ready
-6. Create the ExternalSecret and DataProtectionApplication
-7. Wait for the BackupStorageLocation to become Available
-8. Create the BackupSchedule
-9. Enable cluster-backup on the MultiClusterHub
+4. Enable cluster-backup on the MultiClusterHub
+
+ArgoCD will then automatically deploy the OADP operator and configure backups using the AWS resources Terraform created.
 
 ### Step 5: Verify
 
@@ -91,6 +93,8 @@ Terraform will:
 terraform output verify_commands
 
 # Or manually check
+oc get dpa -n open-cluster-management-backup
+oc get backupstoragelocations -n open-cluster-management-backup
 oc get backupschedule -n open-cluster-management-backup
 oc get backups -n open-cluster-management-backup
 ```
@@ -106,19 +110,22 @@ On the **new** hub cluster:
 NEW_OIDC=$(oc get authentication.config.openshift.io cluster \
   -o jsonpath='{.spec.serviceAccountIssuer}' | sed 's|^https://||')
 
-# 2. Update terraform.tfvars
-cat >> terraform.tfvars <<EOF
-oidc_endpoint   = "${NEW_OIDC}"
+# 2. Update terraform.tfvars with the new OIDC endpoint and enable restore
+```
+
+```hcl
+oidc_endpoint   = "<new-oidc-endpoint>"
 restore_enabled = true
 restore_type    = "full"
-EOF
+```
 
-# 3. Apply - this installs OADP, points to the same S3 bucket, and triggers restore
+```bash
+# 3. Apply - creates AWS infra for new cluster and triggers restore
 terraform init
 terraform apply
 ```
 
-Terraform will install OADP on the new cluster, connect to the existing S3 bucket, discover the backups, and apply the restore. Managed clusters will reconnect automatically.
+Terraform creates the IAM role for the new cluster's OIDC endpoint, and ArgoCD deploys OADP pointing to the same S3 bucket. The restore reconnects managed clusters automatically.
 
 ### Passive Standby (sync config only, no managed cluster activation)
 
@@ -170,10 +177,8 @@ oc get managedclusters -w
 | `backup_ttl` | No | `720h` | Backup retention (30 days) |
 | `secrets_manager_secret_name` | No | `oadp/acm-backup-credentials` | Secrets Manager secret name |
 | `oadp_namespace` | No | `open-cluster-management-backup` | OADP namespace |
-| `oadp_channel` | No | `stable-1.4` | OLM subscription channel |
 | `acm_namespace` | No | `open-cluster-management` | ACM namespace |
 | `enable_cluster_backup` | No | `true` | Enable cluster-backup on MCH |
-| `kubeconfig_path` | No | `""` (uses default) | Path to kubeconfig |
 | `tags` | No | `{}` | Additional AWS resource tags |
 | `restore_enabled` | No | `false` | Trigger a restore |
 | `restore_type` | No | `full` | `full` or `passive` restore |
@@ -181,7 +186,7 @@ oc get managedclusters -w
 
 ## Teardown
 
-To remove all resources (does **not** delete the S3 bucket contents):
+To remove AWS resources (does **not** delete S3 bucket contents or OpenShift resources managed by ArgoCD):
 
 ```bash
 terraform destroy

@@ -41,22 +41,7 @@ resource "null_resource" "restore" {
         veleroCredentialsBackupName: ${var.restore_backup_name}
         veleroResourcesBackupName: ${var.restore_backup_name}
       YAML
-    EOT
-  }
 
-  provisioner "local-exec" {
-    when    = destroy
-    command = "oc delete restore restore-acm -n open-cluster-management-backup --ignore-not-found"
-  }
-
-  depends_on = [null_resource.wait_for_bsl]
-}
-
-resource "null_resource" "wait_for_restore" {
-  count = var.restore_enabled ? 1 : 0
-
-  provisioner "local-exec" {
-    command = <<-EOT
       echo "Waiting for restore to complete..."
       until oc get restore restore-acm -n ${var.oadp_namespace} \
         -o jsonpath='{.status.phase}' 2>/dev/null | grep -qE "Completed|FinishedWithErrors"; do
@@ -67,5 +52,8 @@ resource "null_resource" "wait_for_restore" {
     EOT
   }
 
-  depends_on = [null_resource.restore]
+  provisioner "local-exec" {
+    when    = destroy
+    command = "oc delete restore restore-acm -n open-cluster-management-backup --ignore-not-found"
+  }
 }

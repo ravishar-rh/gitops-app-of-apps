@@ -49,12 +49,6 @@ variable "oadp_namespace" {
   default     = "open-cluster-management-backup"
 }
 
-variable "oadp_channel" {
-  description = "OLM channel for the OADP operator subscription"
-  type        = string
-  default     = "stable-1.4"
-}
-
 variable "acm_namespace" {
   description = "Namespace where ACM is installed"
   type        = string
@@ -65,12 +59,6 @@ variable "enable_cluster_backup" {
   description = "Whether to enable the cluster-backup component on MultiClusterHub"
   type        = bool
   default     = true
-}
-
-variable "kubeconfig_path" {
-  description = "Path to kubeconfig file. If empty, uses the default KUBECONFIG env var or ~/.kube/config"
-  type        = string
-  default     = ""
 }
 
 variable "tags" {

@@ -9,7 +9,3 @@ provider "aws" {
     })
   }
 }
-
-provider "kubernetes" {
-  config_path = var.kubeconfig_path != "" ? var.kubeconfig_path : "~/.kube/config"
-}
