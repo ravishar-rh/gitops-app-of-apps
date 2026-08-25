@@ -35,14 +35,22 @@ Terraform automation for end-to-end ACM hub cluster backup and restore on ROSA H
 
 ## Quick Start - Backup Setup
 
-### Step 1: Get your cluster's OIDC endpoint
+### Step 1: Get your ROSA cluster name
+
+```bash
+rosa list clusters
+```
+
+Use the **NAME** column from the output. This is the name you specified when creating the cluster with `rosa create cluster`.
+
+### Step 2: Get your cluster's OIDC endpoint
 
 ```bash
 oc get authentication.config.openshift.io cluster \
   -o jsonpath='{.spec.serviceAccountIssuer}' | sed 's|^https://||'
 ```
 
-### Step 2: Create your tfvars file
+### Step 3: Create your tfvars file
 
 ```bash
 cd acm-oadp-backup/terraform
@@ -57,7 +65,7 @@ aws_region    = "us-east-1"
 oidc_endpoint = "rh-oidc.s3.us-east-1.amazonaws.com/abc123xyz"
 ```
 
-### Step 3: Apply
+### Step 4: Apply
 
 ```bash
 terraform init
@@ -76,7 +84,7 @@ Terraform will:
 8. Create the BackupSchedule
 9. Enable cluster-backup on the MultiClusterHub
 
-### Step 4: Verify
+### Step 5: Verify
 
 ```bash
 # Terraform prints verification commands in the output
