@@ -21,21 +21,32 @@ variable "restore_backup_name" {
   default     = "latest"
 }
 
-resource "kubernetes_manifest" "restore" {
+locals {
+  managed_clusters_backup = var.restore_type == "full" ? var.restore_backup_name : "skip"
+}
+
+resource "null_resource" "restore" {
   count = var.restore_enabled ? 1 : 0
 
-  manifest = {
-    apiVersion = "cluster.open-cluster-management.io/v1beta1"
-    kind       = "Restore"
-    metadata = {
-      name      = "restore-acm"
-      namespace = var.oadp_namespace
-    }
-    spec = {
-      veleroManagedClustersBackupName = var.restore_type == "full" ? var.restore_backup_name : "skip"
-      veleroCredentialsBackupName     = var.restore_backup_name
-      veleroResourcesBackupName       = var.restore_backup_name
-    }
+  provisioner "local-exec" {
+    command = <<-EOT
+      cat <<'YAML' | oc apply -f -
+      apiVersion: cluster.open-cluster-management.io/v1beta1
+      kind: Restore
+      metadata:
+        name: restore-acm
+        namespace: ${var.oadp_namespace}
+      spec:
+        veleroManagedClustersBackupName: ${local.managed_clusters_backup}
+        veleroCredentialsBackupName: ${var.restore_backup_name}
+        veleroResourcesBackupName: ${var.restore_backup_name}
+      YAML
+    EOT
+  }
+
+  provisioner "local-exec" {
+    when    = destroy
+    command = "oc delete restore restore-acm -n open-cluster-management-backup --ignore-not-found"
   }
 
   depends_on = [null_resource.wait_for_bsl]
@@ -56,5 +67,5 @@ resource "null_resource" "wait_for_restore" {
     EOT
   }
 
-  depends_on = [kubernetes_manifest.restore]
+  depends_on = [null_resource.restore]
 }
