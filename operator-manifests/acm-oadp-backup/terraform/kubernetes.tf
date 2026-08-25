@@ -1,4 +1,4 @@
-resource "kubernetes_namespace" "oadp" {
+resource "kubernetes_namespace_v1" "oadp" {
   metadata {
     name = var.oadp_namespace
   }
@@ -25,7 +25,7 @@ resource "null_resource" "operatorgroup" {
     command = "oc delete operatorgroup oadp-operator-group -n open-cluster-management-backup --ignore-not-found"
   }
 
-  depends_on = [kubernetes_namespace.oadp]
+  depends_on = [kubernetes_namespace_v1.oadp]
 }
 
 resource "null_resource" "subscription" {
