@@ -9,9 +9,62 @@ resource "null_resource" "enable_cluster_backup" {
       oc patch multiclusterhub multiclusterhub -n ${var.acm_namespace} \
         --type merge \
         -p '{"spec":{"overrides":{"components":[{"name":"cluster-backup","enabled":true}]}}}'
-      echo "cluster-backup enabled. ACM will auto-install OADP operator."
+      echo "cluster-backup enabled."
     EOT
   }
+}
+
+resource "null_resource" "install_oadp_operator" {
+  triggers = {
+    namespace = var.oadp_namespace
+    channel   = var.oadp_channel
+  }
+
+  provisioner "local-exec" {
+    command = <<-EOT
+      echo "Creating namespace and installing OADP operator..."
+      cat <<YAML | oc apply -f -
+      apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: ${var.oadp_namespace}
+        labels:
+          openshift.io/cluster-monitoring: "true"
+      ---
+      apiVersion: operators.coreos.com/v1
+      kind: OperatorGroup
+      metadata:
+        name: oadp-operator
+        namespace: ${var.oadp_namespace}
+      spec:
+        targetNamespaces:
+          - ${var.oadp_namespace}
+      ---
+      apiVersion: operators.coreos.com/v1alpha1
+      kind: Subscription
+      metadata:
+        name: redhat-oadp-operator
+        namespace: ${var.oadp_namespace}
+      spec:
+        channel: ${var.oadp_channel}
+        installPlanApproval: Automatic
+        name: redhat-oadp-operator
+        source: redhat-operators
+        sourceNamespace: openshift-marketplace
+      YAML
+      echo "OADP operator subscription created."
+    EOT
+  }
+
+  provisioner "local-exec" {
+    when    = destroy
+    command = <<-EOT
+      oc delete subscription redhat-oadp-operator -n ${self.triggers.namespace} --ignore-not-found
+      oc delete operatorgroup oadp-operator -n ${self.triggers.namespace} --ignore-not-found
+    EOT
+  }
+
+  depends_on = [null_resource.enable_cluster_backup]
 }
 
 resource "null_resource" "wait_for_oadp_operator" {
@@ -38,7 +91,7 @@ resource "null_resource" "wait_for_oadp_operator" {
     EOT
   }
 
-  depends_on = [null_resource.enable_cluster_backup]
+  depends_on = [null_resource.install_oadp_operator]
 }
 
 resource "null_resource" "credentials_external_secret" {
