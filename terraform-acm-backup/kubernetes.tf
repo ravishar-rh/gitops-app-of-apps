@@ -86,6 +86,33 @@ resource "null_resource" "argocd_rbac" {
   }
 }
 
+resource "null_resource" "wait_for_oadp_operator" {
+  triggers = {
+    namespace = var.oadp_namespace
+  }
+
+  provisioner "local-exec" {
+    command = <<-EOT
+      echo "Waiting for OADP CRD to be registered..."
+      until oc get crd dataprotectionapplications.oadp.openshift.io 2>/dev/null; do
+        echo "  OADP CRD not yet available, waiting..."
+        sleep 15
+      done
+
+      echo "Waiting for OADP operator deployment..."
+      until oc get deployment -n ${var.oadp_namespace} -l app.kubernetes.io/name=oadp-operator-controller-manager -o name 2>/dev/null | grep -q deployment; do
+        sleep 10
+      done
+      oc wait --for=condition=Available deployment \
+        -l app.kubernetes.io/name=oadp-operator-controller-manager \
+        -n ${var.oadp_namespace} --timeout=300s
+      echo "OADP operator is ready."
+    EOT
+  }
+
+  depends_on = [null_resource.argocd_rbac]
+}
+
 resource "null_resource" "credentials_external_secret" {
   triggers = {
     namespace   = var.oadp_namespace
@@ -131,7 +158,7 @@ resource "null_resource" "credentials_external_secret" {
 
   depends_on = [
     aws_secretsmanager_secret_version.oadp_credentials,
-    null_resource.argocd_rbac,
+    null_resource.wait_for_oadp_operator,
   ]
 }
 
