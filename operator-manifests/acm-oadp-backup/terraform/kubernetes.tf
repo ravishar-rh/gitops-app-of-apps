@@ -86,6 +86,54 @@ resource "null_resource" "argocd_rbac" {
   }
 }
 
+resource "null_resource" "dpa" {
+  provisioner "local-exec" {
+    command = <<-EOT
+      cat <<YAML | oc apply -f -
+      apiVersion: oadp.openshift.io/v1alpha1
+      kind: DataProtectionApplication
+      metadata:
+        name: dpa-acm
+        namespace: ${var.oadp_namespace}
+      spec:
+        configuration:
+          velero:
+            defaultPlugins:
+              - openshift
+              - aws
+          nodeAgent:
+            enable: false
+            uploaderType: kopia
+        backupImages: false
+        features:
+          dataMover:
+            enable: false
+        backupLocations:
+          - velero:
+              provider: aws
+              default: true
+              objectStorage:
+                bucket: ${aws_s3_bucket.acm_backup.id}
+                prefix: ${var.s3_bucket_prefix}
+              config:
+                region: ${var.aws_region}
+                s3ForcePathStyle: "false"
+                profile: default
+              credential:
+                name: cloud-credentials
+                key: credentials
+      YAML
+    EOT
+  }
+
+  provisioner "local-exec" {
+    when    = destroy
+    command = "oc delete dataprotectionapplication dpa-acm -n open-cluster-management-backup --ignore-not-found"
+  }
+
+  depends_on = [null_resource.argocd_rbac]
+}
+
 resource "null_resource" "enable_cluster_backup" {
   count = var.enable_cluster_backup ? 1 : 0
 
@@ -120,5 +168,6 @@ resource "null_resource" "verify_deployment" {
     aws_iam_role_policy_attachment.oadp,
     aws_secretsmanager_secret_version.oadp_credentials,
     null_resource.argocd_rbac,
+    null_resource.dpa,
   ]
 }
