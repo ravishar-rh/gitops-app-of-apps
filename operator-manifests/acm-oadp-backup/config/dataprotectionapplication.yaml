@@ -13,6 +13,7 @@ spec:
         - aws
     nodeAgent:
       enable: false
+      uploaderType: kopia
   backupImages: false
   features:
     dataMover:
