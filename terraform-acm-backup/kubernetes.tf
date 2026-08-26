@@ -138,9 +138,6 @@ resource "null_resource" "credentials_external_secret" {
 resource "null_resource" "dpa" {
   triggers = {
     namespace = var.oadp_namespace
-    bucket    = aws_s3_bucket.acm_backup.id
-    prefix    = var.s3_bucket_prefix
-    region    = var.aws_region
   }
 
   provisioner "local-exec" {
