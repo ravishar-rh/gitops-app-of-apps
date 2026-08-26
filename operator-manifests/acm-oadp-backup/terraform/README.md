@@ -184,6 +184,80 @@ oc get managedclusters -w
 | `restore_type` | No | `full` | `full` or `passive` restore |
 | `restore_backup_name` | No | `latest` | Specific backup to restore |
 
+## Troubleshooting
+
+### Secrets Manager: secret already scheduled for deletion
+
+If you previously ran `terraform destroy` and then re-run `terraform apply`, you may see:
+
+```
+InvalidRequestException: You can't create this secret because a secret
+with this name is already scheduled for deletion.
+```
+
+Secrets Manager has a 7-day recovery window by default. To fix this, either force delete and re-apply, or restore and import:
+
+**Option A: Force delete and re-create**
+
+```bash
+aws secretsmanager delete-secret \
+  --secret-id oadp/acm-backup-credentials \
+  --force-delete-without-recovery
+
+terraform apply
+```
+
+**Option B: Restore and import into Terraform state**
+
+```bash
+aws secretsmanager restore-secret \
+  --secret-id oadp/acm-backup-credentials
+
+terraform import aws_secretsmanager_secret.oadp_credentials oadp/acm-backup-credentials
+terraform apply
+```
+
+### S3 bucket already exists
+
+If the S3 bucket was created outside of Terraform or from a previous run:
+
+```bash
+terraform import aws_s3_bucket.acm_backup <bucket-name>
+terraform apply
+```
+
+### IAM role already exists
+
+```bash
+terraform import aws_iam_role.oadp <role-name>
+terraform import aws_iam_policy.oadp <policy-arn>
+terraform apply
+```
+
+### ArgoCD sync errors after Terraform apply
+
+Terraform creates the AWS resources, ArgoCD deploys the Kubernetes resources. If ArgoCD shows `OutOfSync` or `SyncFailed` after Terraform completes, force a sync:
+
+```bash
+oc annotate applications.argoproj.io acm-oadp-backup -n openshift-gitops \
+  argocd.argoproj.io/refresh=hard --overwrite
+```
+
+### ExternalSecret not syncing
+
+Verify the `ClusterSecretStore` named `aws-secrets-manager` exists and is healthy:
+
+```bash
+oc get clustersecretstore aws-secrets-manager
+oc get externalsecret cloud-credentials -n open-cluster-management-backup
+```
+
+If the ExternalSecret shows `SecretSyncedError`, check that the Secrets Manager secret exists:
+
+```bash
+aws secretsmanager get-secret-value --secret-id oadp/acm-backup-credentials
+```
+
 ## Teardown
 
 To remove AWS resources (does **not** delete S3 bucket contents or OpenShift resources managed by ArgoCD):
@@ -198,6 +272,8 @@ To also remove the S3 bucket contents:
 aws s3 rm s3://$(terraform output -raw s3_bucket_name) --recursive
 terraform destroy
 ```
+
+**Note:** `terraform destroy` schedules the Secrets Manager secret for deletion with a 7-day recovery window. If you need to re-create it immediately, use the force delete command from the troubleshooting section above.
 
 ## State Management
 
