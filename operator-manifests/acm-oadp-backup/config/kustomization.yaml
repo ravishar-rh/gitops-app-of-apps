@@ -1,8 +1,8 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
-resources:
-  - credentials-secret.yaml
-  - backupschedule.yaml
-  # dataprotectionapplication is applied by Terraform with S3 bucket/region values
-  # Uncomment only when restoring to a new hub cluster:
+resources: []
+  # Uncomment when switching from Terraform to ArgoCD-managed config:
+  # - credentials-secret.yaml
+  # - dataprotectionapplication.yaml
+  # - backupschedule.yaml
   # - restore.yaml

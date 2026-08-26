@@ -86,6 +86,50 @@ resource "null_resource" "argocd_rbac" {
   }
 }
 
+resource "null_resource" "credentials_external_secret" {
+  provisioner "local-exec" {
+    command = <<-EOT
+      cat <<'YAML' | oc apply -f -
+      apiVersion: external-secrets.io/v1
+      kind: ExternalSecret
+      metadata:
+        name: cloud-credentials
+        namespace: ${var.oadp_namespace}
+      spec:
+        refreshInterval: 1h
+        secretStoreRef:
+          name: aws-secrets-manager
+          kind: ClusterSecretStore
+        target:
+          name: cloud-credentials
+          creationPolicy: Owner
+          template:
+            type: Opaque
+            data:
+              credentials: |
+                [default]
+                role_arn = {{ .role_arn }}
+                web_identity_token_file = /var/run/secrets/openshift/serviceaccount/token
+        data:
+          - secretKey: role_arn
+            remoteRef:
+              key: ${var.secrets_manager_secret_name}
+              property: role_arn
+      YAML
+    EOT
+  }
+
+  provisioner "local-exec" {
+    when    = destroy
+    command = "oc delete externalsecret cloud-credentials -n ${var.oadp_namespace} --ignore-not-found"
+  }
+
+  depends_on = [
+    aws_secretsmanager_secret_version.oadp_credentials,
+    null_resource.argocd_rbac,
+  ]
+}
+
 resource "null_resource" "dpa" {
   provisioner "local-exec" {
     command = <<-EOT
@@ -128,10 +172,50 @@ resource "null_resource" "dpa" {
 
   provisioner "local-exec" {
     when    = destroy
-    command = "oc delete dataprotectionapplication dpa-acm -n open-cluster-management-backup --ignore-not-found"
+    command = "oc delete dataprotectionapplication dpa-acm -n ${var.oadp_namespace} --ignore-not-found"
   }
 
-  depends_on = [null_resource.argocd_rbac]
+  depends_on = [null_resource.credentials_external_secret]
+}
+
+resource "null_resource" "wait_for_bsl" {
+  provisioner "local-exec" {
+    command = <<-EOT
+      echo "Waiting for BackupStorageLocation to become Available..."
+      until oc get backupstoragelocations -n ${var.oadp_namespace} -o name 2>/dev/null | grep -q backupstoragelocation; do
+        sleep 10
+      done
+      oc wait --for=jsonpath='{.status.phase}'=Available backupstoragelocations \
+        -n ${var.oadp_namespace} --timeout=180s
+    EOT
+  }
+
+  depends_on = [null_resource.dpa]
+}
+
+resource "null_resource" "backup_schedule" {
+  provisioner "local-exec" {
+    command = <<-EOT
+      cat <<YAML | oc apply -f -
+      apiVersion: cluster.open-cluster-management.io/v1beta1
+      kind: BackupSchedule
+      metadata:
+        name: schedule-acm
+        namespace: ${var.oadp_namespace}
+      spec:
+        veleroSchedule: "${var.backup_schedule}"
+        veleroTtl: ${var.backup_ttl}
+        useManagedServiceAccount: true
+      YAML
+    EOT
+  }
+
+  provisioner "local-exec" {
+    when    = destroy
+    command = "oc delete backupschedule schedule-acm -n ${var.oadp_namespace} --ignore-not-found"
+  }
+
+  depends_on = [null_resource.wait_for_bsl]
 }
 
 resource "null_resource" "enable_cluster_backup" {
@@ -149,17 +233,20 @@ resource "null_resource" "enable_cluster_backup" {
 resource "null_resource" "verify_deployment" {
   provisioner "local-exec" {
     command = <<-EOT
-      echo "AWS infrastructure and ArgoCD RBAC are ready."
+      echo ""
+      echo "============================================"
+      echo "  ACM OADP Backup Setup Complete"
+      echo "============================================"
       echo ""
       echo "S3 Bucket:       ${aws_s3_bucket.acm_backup.id}"
       echo "IAM Role ARN:    ${aws_iam_role.oadp.arn}"
       echo "Secrets Manager: ${var.secrets_manager_secret_name}"
       echo ""
-      echo "ArgoCD will deploy the OADP operator and configure backups."
       echo "Verify with:"
       echo "  oc get dpa -n ${var.oadp_namespace}"
       echo "  oc get backupstoragelocations -n ${var.oadp_namespace}"
       echo "  oc get backupschedule -n ${var.oadp_namespace}"
+      echo "  oc get backups -n ${var.oadp_namespace}"
     EOT
   }
 
@@ -169,5 +256,6 @@ resource "null_resource" "verify_deployment" {
     aws_secretsmanager_secret_version.oadp_credentials,
     null_resource.argocd_rbac,
     null_resource.dpa,
+    null_resource.backup_schedule,
   ]
 }
