@@ -1,3 +1,91 @@
+resource "null_resource" "argocd_rbac" {
+  provisioner "local-exec" {
+    command = <<-EOT
+      cat <<'YAML' | oc apply -f -
+      apiVersion: rbac.authorization.k8s.io/v1
+      kind: ClusterRole
+      metadata:
+        name: argocd-acm-oadp-manager
+      rules:
+        - apiGroups:
+            - oadp.openshift.io
+          resources:
+            - dataprotectionapplications
+            - cloudstorages
+          verbs:
+            - get
+            - list
+            - watch
+            - create
+            - update
+            - patch
+            - delete
+        - apiGroups:
+            - cluster.open-cluster-management.io
+          resources:
+            - backupschedules
+            - restores
+          verbs:
+            - get
+            - list
+            - watch
+            - create
+            - update
+            - patch
+            - delete
+        - apiGroups:
+            - velero.io
+          resources:
+            - backups
+            - restores
+            - schedules
+            - backupstoragelocations
+          verbs:
+            - get
+            - list
+            - watch
+            - create
+            - update
+            - patch
+            - delete
+        - apiGroups:
+            - external-secrets.io
+          resources:
+            - externalsecrets
+          verbs:
+            - get
+            - list
+            - watch
+            - create
+            - update
+            - patch
+            - delete
+      ---
+      apiVersion: rbac.authorization.k8s.io/v1
+      kind: ClusterRoleBinding
+      metadata:
+        name: argocd-acm-oadp-manager
+      roleRef:
+        apiGroup: rbac.authorization.k8s.io
+        kind: ClusterRole
+        name: argocd-acm-oadp-manager
+      subjects:
+        - kind: ServiceAccount
+          name: openshift-gitops-argocd-application-controller
+          namespace: openshift-gitops
+      YAML
+    EOT
+  }
+
+  provisioner "local-exec" {
+    when    = destroy
+    command = <<-EOT
+      oc delete clusterrolebinding argocd-acm-oadp-manager --ignore-not-found
+      oc delete clusterrole argocd-acm-oadp-manager --ignore-not-found
+    EOT
+  }
+}
+
 resource "null_resource" "enable_cluster_backup" {
   count = var.enable_cluster_backup ? 1 : 0
 
@@ -13,7 +101,7 @@ resource "null_resource" "enable_cluster_backup" {
 resource "null_resource" "verify_deployment" {
   provisioner "local-exec" {
     command = <<-EOT
-      echo "AWS infrastructure is ready."
+      echo "AWS infrastructure and ArgoCD RBAC are ready."
       echo ""
       echo "S3 Bucket:       ${aws_s3_bucket.acm_backup.id}"
       echo "IAM Role ARN:    ${aws_iam_role.oadp.arn}"
@@ -31,5 +119,6 @@ resource "null_resource" "verify_deployment" {
     aws_s3_bucket.acm_backup,
     aws_iam_role_policy_attachment.oadp,
     aws_secretsmanager_secret_version.oadp_credentials,
+    null_resource.argocd_rbac,
   ]
 }
