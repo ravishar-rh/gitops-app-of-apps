@@ -28,6 +28,10 @@ locals {
 resource "null_resource" "restore" {
   count = var.restore_enabled ? 1 : 0
 
+  triggers = {
+    namespace = var.oadp_namespace
+  }
+
   provisioner "local-exec" {
     command = <<-EOT
       cat <<'YAML' | oc apply -f -
@@ -54,6 +58,6 @@ resource "null_resource" "restore" {
 
   provisioner "local-exec" {
     when    = destroy
-    command = "oc delete restore restore-acm -n open-cluster-management-backup --ignore-not-found"
+    command = "oc delete restore restore-acm -n ${self.triggers.namespace} --ignore-not-found"
   }
 }

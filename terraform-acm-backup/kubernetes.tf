@@ -87,6 +87,11 @@ resource "null_resource" "argocd_rbac" {
 }
 
 resource "null_resource" "credentials_external_secret" {
+  triggers = {
+    namespace   = var.oadp_namespace
+    secret_name = var.secrets_manager_secret_name
+  }
+
   provisioner "local-exec" {
     command = <<-EOT
       cat <<'YAML' | oc apply -f -
@@ -121,7 +126,7 @@ resource "null_resource" "credentials_external_secret" {
 
   provisioner "local-exec" {
     when    = destroy
-    command = "oc delete externalsecret cloud-credentials -n ${var.oadp_namespace} --ignore-not-found"
+    command = "oc delete externalsecret cloud-credentials -n ${self.triggers.namespace} --ignore-not-found"
   }
 
   depends_on = [
@@ -131,6 +136,13 @@ resource "null_resource" "credentials_external_secret" {
 }
 
 resource "null_resource" "dpa" {
+  triggers = {
+    namespace = var.oadp_namespace
+    bucket    = aws_s3_bucket.acm_backup.id
+    prefix    = var.s3_bucket_prefix
+    region    = var.aws_region
+  }
+
   provisioner "local-exec" {
     command = <<-EOT
       cat <<YAML | oc apply -f -
@@ -172,7 +184,7 @@ resource "null_resource" "dpa" {
 
   provisioner "local-exec" {
     when    = destroy
-    command = "oc delete dataprotectionapplication dpa-acm -n ${var.oadp_namespace} --ignore-not-found"
+    command = "oc delete dataprotectionapplication dpa-acm -n ${self.triggers.namespace} --ignore-not-found"
   }
 
   depends_on = [null_resource.credentials_external_secret]
@@ -194,6 +206,12 @@ resource "null_resource" "wait_for_bsl" {
 }
 
 resource "null_resource" "backup_schedule" {
+  triggers = {
+    namespace = var.oadp_namespace
+    schedule  = var.backup_schedule
+    ttl       = var.backup_ttl
+  }
+
   provisioner "local-exec" {
     command = <<-EOT
       cat <<YAML | oc apply -f -
@@ -212,7 +230,7 @@ resource "null_resource" "backup_schedule" {
 
   provisioner "local-exec" {
     when    = destroy
-    command = "oc delete backupschedule schedule-acm -n ${var.oadp_namespace} --ignore-not-found"
+    command = "oc delete backupschedule schedule-acm -n ${self.triggers.namespace} --ignore-not-found"
   }
 
   depends_on = [null_resource.wait_for_bsl]
