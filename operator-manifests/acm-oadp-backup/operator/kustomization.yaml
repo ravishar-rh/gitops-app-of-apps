@@ -4,5 +4,5 @@ resources:
   - namespace.yaml
   - operatorgroup.yaml
   - subscription.yaml
-  - clusterrole.yaml
-  - clusterrolebinding.yaml
+  # clusterrole and clusterrolebinding are applied by Terraform
+  # to avoid chicken-and-egg with ArgoCD permissions
