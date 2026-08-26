@@ -55,12 +55,6 @@ variable "acm_namespace" {
   default     = "open-cluster-management"
 }
 
-variable "enable_cluster_backup" {
-  description = "Whether to enable the cluster-backup component on MultiClusterHub"
-  type        = bool
-  default     = true
-}
-
 variable "tags" {
   description = "Additional tags to apply to all AWS resources"
   type        = map(string)

@@ -8,7 +8,6 @@ oidc_endpoint = "rh-oidc.s3.us-east-1.amazonaws.com/abc123xyz"
 # backup_schedule             = "0 */6 * * *"
 # backup_ttl                  = "720h"
 # secrets_manager_secret_name = "oadp/acm-backup-credentials"
-# enable_cluster_backup       = true
 # tags                        = { "environment" = "production" }
 
 # Disaster Recovery (only set during restore)
