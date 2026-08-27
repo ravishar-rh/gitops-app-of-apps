@@ -49,12 +49,6 @@ variable "oadp_namespace" {
   default     = "open-cluster-management-backup"
 }
 
-variable "oadp_channel" {
-  description = "OLM channel for the OADP operator subscription"
-  type        = string
-  default     = "stable-1.4"
-}
-
 variable "acm_namespace" {
   description = "Namespace where ACM is installed"
   type        = string

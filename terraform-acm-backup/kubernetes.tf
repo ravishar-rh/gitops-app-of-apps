@@ -1,70 +1,17 @@
-resource "null_resource" "enable_cluster_backup" {
-  triggers = {
-    acm_namespace = var.acm_namespace
-  }
-
+resource "null_resource" "check_oc_login" {
   provisioner "local-exec" {
     command = <<-EOT
-      echo "Enabling cluster-backup on MultiClusterHub..."
-      oc patch multiclusterhub multiclusterhub -n ${var.acm_namespace} \
-        --type merge \
-        -p '{"spec":{"overrides":{"components":[{"name":"cluster-backup","enabled":true}]}}}'
-      echo "cluster-backup enabled."
+      if ! oc whoami &>/dev/null; then
+        echo ""
+        echo "ERROR: Not logged in to an OpenShift cluster."
+        echo "Run 'oc login' before running terraform apply."
+        echo ""
+        exit 1
+      fi
+      echo "Logged in as: $(oc whoami)"
+      echo "Cluster: $(oc whoami --show-server)"
     EOT
   }
-}
-
-resource "null_resource" "install_oadp_operator" {
-  triggers = {
-    namespace = var.oadp_namespace
-    channel   = var.oadp_channel
-  }
-
-  provisioner "local-exec" {
-    command = <<-EOT
-      echo "Creating namespace and installing OADP operator..."
-      cat <<YAML | oc apply -f -
-      apiVersion: v1
-      kind: Namespace
-      metadata:
-        name: ${var.oadp_namespace}
-        labels:
-          openshift.io/cluster-monitoring: "true"
-      ---
-      apiVersion: operators.coreos.com/v1
-      kind: OperatorGroup
-      metadata:
-        name: oadp-operator
-        namespace: ${var.oadp_namespace}
-      spec:
-        targetNamespaces:
-          - ${var.oadp_namespace}
-      ---
-      apiVersion: operators.coreos.com/v1alpha1
-      kind: Subscription
-      metadata:
-        name: redhat-oadp-operator
-        namespace: ${var.oadp_namespace}
-      spec:
-        channel: ${var.oadp_channel}
-        installPlanApproval: Automatic
-        name: redhat-oadp-operator
-        source: redhat-operators
-        sourceNamespace: openshift-marketplace
-      YAML
-      echo "OADP operator subscription created."
-    EOT
-  }
-
-  provisioner "local-exec" {
-    when    = destroy
-    command = <<-EOT
-      oc delete subscription redhat-oadp-operator -n ${self.triggers.namespace} --ignore-not-found
-      oc delete operatorgroup oadp-operator -n ${self.triggers.namespace} --ignore-not-found
-    EOT
-  }
-
-  depends_on = [null_resource.enable_cluster_backup]
 }
 
 resource "null_resource" "wait_for_oadp_operator" {
@@ -74,16 +21,24 @@ resource "null_resource" "wait_for_oadp_operator" {
 
   provisioner "local-exec" {
     command = <<-EOT
-      echo "Waiting for OADP CRD to be registered..."
-      until oc get crd dataprotectionapplications.oadp.openshift.io 2>/dev/null; do
-        echo "  OADP CRD not yet available, waiting..."
-        sleep 15
-      done
+      echo "Checking that OADP operator is installed..."
+      echo "(OADP is managed by ArgoCD via operator-manifests/oadp-operator/)"
+      echo ""
 
-      echo "Waiting for OADP operator deployment..."
-      until oc get deployment -n ${var.oadp_namespace} -l app.kubernetes.io/name=oadp-operator-controller-manager -o name 2>/dev/null | grep -q deployment; do
-        sleep 10
-      done
+      if ! oc get crd dataprotectionapplications.oadp.openshift.io &>/dev/null; then
+        echo "ERROR: OADP CRD not found."
+        echo ""
+        echo "Ensure the following are synced in ArgoCD before running terraform apply:"
+        echo "  1. acm-hub app (MultiClusterHub with cluster-backup enabled)"
+        echo "  2. oadp-operator app (OADP Subscription)"
+        echo "  3. Approve the OADP InstallPlan:"
+        echo "     oc get installplan -n ${var.oadp_namespace}"
+        echo "     oc patch installplan <name> -n ${var.oadp_namespace} --type merge -p '{\"spec\":{\"approved\":true}}'"
+        echo ""
+        exit 1
+      fi
+
+      echo "Waiting for OADP operator deployment to be ready..."
       oc wait --for=condition=Available deployment \
         -l app.kubernetes.io/name=oadp-operator-controller-manager \
         -n ${var.oadp_namespace} --timeout=300s
@@ -91,7 +46,7 @@ resource "null_resource" "wait_for_oadp_operator" {
     EOT
   }
 
-  depends_on = [null_resource.install_oadp_operator]
+  depends_on = [null_resource.check_oc_login]
 }
 
 resource "null_resource" "credentials_external_secret" {

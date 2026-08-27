@@ -1,12 +1,17 @@
 # ACM OADP Backup - Terraform Automation
 
-Terraform automation for end-to-end ACM hub cluster backup and restore on ROSA HCP with STS. Terraform manages AWS infrastructure and applies all backup configuration to the cluster. ArgoCD only manages the OADP operator installation (namespace, OperatorGroup, Subscription) via `operator-manifests/acm-oadp-backup/`.
+Terraform automation for ACM hub cluster backup and restore on ROSA HCP with STS. ArgoCD manages operator installation (OADP + MCH cluster-backup), Terraform manages AWS infrastructure and backup configuration.
 
-The config templates in `operator-manifests/acm-oadp-backup/config/` are commented out by default. When you're ready to switch to a fully GitOps-managed approach, uncomment them in the kustomization and stop using Terraform for the OpenShift resources.
+## Architecture
 
-## What Terraform Manages
+### ArgoCD manages (via `operator-manifests/`)
 
-### AWS Resources
+| App | Resources |
+|---|---|
+| **acm-hub** | MultiClusterHub with `cluster-backup: true` (creates namespace + OperatorGroup) |
+| **oadp-operator** | OADP Subscription with `Manual` install plan approval |
+
+### Terraform manages
 
 | Resource | Description |
 |---|---|
@@ -14,33 +19,19 @@ The config templates in `operator-manifests/acm-oadp-backup/config/` are comment
 | **IAM Role** | OIDC-federated role for Velero/OADP service accounts |
 | **IAM Policy** | S3 and EC2 permissions scoped to the backup bucket |
 | **Secrets Manager Secret** | Stores the IAM role ARN for ExternalSecrets to sync |
-
-### OpenShift Resources (via `oc` CLI)
-
-| Resource | Description |
-|---|---|
-| **ArgoCD RBAC** | ClusterRole/ClusterRoleBinding for OADP, ACM, Velero, ExternalSecrets APIs |
 | **ExternalSecret** | Syncs IAM role ARN from Secrets Manager to a Kubernetes secret |
 | **DataProtectionApplication** | Velero config with aws + openshift plugins, S3 backend |
 | **BackupSchedule** | ACM backup every 6 hours, 30-day retention |
-| **MultiClusterHub patch** | Enables the cluster-backup component (optional) |
 | **Restore** | Triggers an ACM restore during disaster recovery (optional) |
-
-### What ArgoCD Manages
-
-ArgoCD deploys only the OADP operator from `operator-manifests/acm-oadp-backup/`:
-
-- Namespace (`open-cluster-management-backup`)
-- OperatorGroup (OwnNamespace)
-- Subscription (OADP operator from redhat-operators)
 
 ## Prerequisites
 
 1. **AWS CLI** configured with credentials that can create IAM roles, S3 buckets, and Secrets Manager secrets
-2. **oc CLI** logged in to the ROSA HCP cluster
+2. **oc CLI** installed and logged in to the ROSA HCP cluster
 3. **Terraform** >= 1.5.0
 4. **ACM** already installed on the cluster (MultiClusterHub exists)
 5. **ExternalSecrets Operator** installed with a `ClusterSecretStore` named `aws-secrets-manager`
+6. **OADP operator installed and running** (deployed by ArgoCD from `operator-manifests/oadp-operator/`)
 
 ## Quick Start - Backup Setup
 
@@ -74,7 +65,28 @@ aws_region    = "us-east-1"
 oidc_endpoint = "rh-oidc.s3.us-east-1.amazonaws.com/abc123xyz"
 ```
 
-### Step 4: Apply
+### Step 4: Deploy OADP operator via ArgoCD
+
+Ensure the ArgoCD applications are synced:
+
+1. **acm-hub** — syncs `multiclusterhub.yaml` with `cluster-backup: true`, which creates the `open-cluster-management-backup` namespace and OperatorGroup
+2. **oadp-operator** — syncs the OADP Subscription with `Manual` approval
+
+Approve the first OADP install plan:
+
+```bash
+# Find the install plan
+oc get installplan -n open-cluster-management-backup
+
+# Approve it
+oc patch installplan <install-plan-name> -n open-cluster-management-backup \
+  --type merge -p '{"spec":{"approved":true}}'
+
+# Wait for the operator to be ready
+oc get csv -n open-cluster-management-backup -w
+```
+
+### Step 5: Apply Terraform
 
 ```bash
 terraform init
@@ -83,19 +95,17 @@ terraform apply
 ```
 
 Terraform will:
-1. Create the S3 bucket with encryption, versioning, and lifecycle policies
-2. Create the IAM role and policy with OIDC trust for the cluster
-3. Store the role ARN in Secrets Manager
-4. Apply ArgoCD RBAC for OADP/ACM/Velero/ExternalSecrets APIs
-5. Create the ExternalSecret to sync credentials from Secrets Manager
-6. Create the DataProtectionApplication with your S3 bucket and region
-7. Wait for the BackupStorageLocation to become Available
-8. Create the BackupSchedule
-9. Enable cluster-backup on the MultiClusterHub
+1. Verify you are logged in to the cluster (`oc whoami`)
+2. Verify OADP operator is installed and ready
+3. Create the S3 bucket with encryption, versioning, and lifecycle policies
+4. Create the IAM role and policy with OIDC trust for the cluster
+5. Store the role ARN in Secrets Manager
+6. Create the ExternalSecret to sync credentials from Secrets Manager
+7. Create the DataProtectionApplication with your S3 bucket and region
+8. Wait for the BackupStorageLocation to become Available
+9. Create the BackupSchedule
 
-ArgoCD manages only the OADP operator installation (namespace, OperatorGroup, Subscription).
-
-### Step 5: Verify
+### Step 6: Verify
 
 ```bash
 # Terraform prints verification commands in the output
@@ -187,13 +197,44 @@ oc get managedclusters -w
 | `secrets_manager_secret_name` | No | `oadp/acm-backup-credentials` | Secrets Manager secret name |
 | `oadp_namespace` | No | `open-cluster-management-backup` | OADP namespace |
 | `acm_namespace` | No | `open-cluster-management` | ACM namespace |
-| `enable_cluster_backup` | No | `true` | Enable cluster-backup on MCH |
 | `tags` | No | `{}` | Additional AWS resource tags |
 | `restore_enabled` | No | `false` | Trigger a restore |
 | `restore_type` | No | `full` | `full` or `passive` restore |
 | `restore_backup_name` | No | `latest` | Specific backup to restore |
 
 ## Troubleshooting
+
+### Not logged in to the cluster
+
+Terraform checks `oc whoami` as its first step. If you see:
+
+```
+ERROR: Not logged in to an OpenShift cluster.
+Run 'oc login' before running terraform apply.
+```
+
+Log in and re-run:
+
+```bash
+oc login --token=<token> --server=https://<api-server>:6443
+terraform apply
+```
+
+### OADP CRD not found
+
+If Terraform fails with `ERROR: OADP CRD not found`, the OADP operator hasn't been installed yet:
+
+```bash
+# Check the subscription exists
+oc get subscription redhat-oadp-operator -n open-cluster-management-backup
+
+# Check for pending install plans (Manual approval required)
+oc get installplan -n open-cluster-management-backup
+
+# Approve the install plan
+oc patch installplan <name> -n open-cluster-management-backup \
+  --type merge -p '{"spec":{"approved":true}}'
+```
 
 ### Secrets Manager: secret already scheduled for deletion
 
@@ -243,15 +284,6 @@ terraform import aws_iam_policy.oadp <policy-arn>
 terraform apply
 ```
 
-### ArgoCD sync errors after Terraform apply
-
-Terraform creates the AWS resources, ArgoCD deploys the Kubernetes resources. If ArgoCD shows `OutOfSync` or `SyncFailed` after Terraform completes, force a sync:
-
-```bash
-oc annotate applications.argoproj.io acm-oadp-backup -n openshift-gitops \
-  argocd.argoproj.io/refresh=hard --overwrite
-```
-
 ### ExternalSecret not syncing
 
 Verify the `ClusterSecretStore` named `aws-secrets-manager` exists and is healthy:
@@ -269,7 +301,7 @@ aws secretsmanager get-secret-value --secret-id oadp/acm-backup-credentials
 
 ## Teardown
 
-To remove AWS resources (does **not** delete S3 bucket contents or OpenShift resources managed by ArgoCD):
+To remove all resources (AWS + OpenShift):
 
 ```bash
 terraform destroy
