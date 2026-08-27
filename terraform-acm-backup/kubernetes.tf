@@ -121,9 +121,6 @@ resource "null_resource" "dpa" {
             enable: false
             uploaderType: kopia
         backupImages: false
-        features:
-          dataMover:
-            enable: false
         backupLocations:
           - velero:
               provider: aws
@@ -157,8 +154,9 @@ resource "null_resource" "wait_for_bsl" {
       until oc get backupstoragelocations -n ${var.oadp_namespace} -o name 2>/dev/null | grep -q backupstoragelocation; do
         sleep 10
       done
-      oc wait --for=jsonpath='{.status.phase}'=Available backupstoragelocations \
-        -n ${var.oadp_namespace} --timeout=180s
+      BSL_NAME=$(oc get backupstoragelocations -n ${var.oadp_namespace} -o jsonpath='{.items[0].metadata.name}')
+      oc wait --for=jsonpath='{.status.phase}'=Available backupstoragelocation/$BSL_NAME \
+        -n ${var.oadp_namespace} --timeout=300s
     EOT
   }
 

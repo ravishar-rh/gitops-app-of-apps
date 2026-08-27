@@ -44,6 +44,7 @@ resource "null_resource" "restore" {
         veleroManagedClustersBackupName: ${local.managed_clusters_backup}
         veleroCredentialsBackupName: ${var.restore_backup_name}
         veleroResourcesBackupName: ${var.restore_backup_name}
+        cleanupBeforeRestore: CleanupRestored
       YAML
 
       echo "Waiting for restore to complete..."

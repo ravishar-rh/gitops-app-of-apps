@@ -3,9 +3,11 @@ kind: Subscription
 metadata:
   name: redhat-oadp-operator
   namespace: open-cluster-management-backup
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
 spec:
   channel: stable
-  installPlanApproval: Manual
+  installPlanApproval: Automatic
   name: redhat-oadp-operator
   source: redhat-operators
   sourceNamespace: openshift-marketplace
