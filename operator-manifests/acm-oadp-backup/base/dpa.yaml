@@ -21,6 +21,7 @@ spec:
     # DaemonSet off unless you also back up volumes on the hub.
     nodeAgent:
       enable: false
+      uploaderType: kopia
     velero:
       defaultPlugins:
         - openshift
