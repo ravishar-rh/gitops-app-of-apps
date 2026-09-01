@@ -1,0 +1,17 @@
+# Phase 3 GitOps — apply ONLY after:
+#   1. overlays/rosa-hcp synced and OADP healthy (CSV + BSL Available)
+#   2. cluster-backup enabled on MultiClusterHub (examples/mch-cluster-backup.yaml)
+#
+# Do not GitOps Schedule.velero.io or Backup.velero.io — this CR creates them.
+apiVersion: cluster.open-cluster-management.io/v1beta1
+kind: BackupSchedule
+metadata:
+  name: schedule-acm
+  namespace: open-cluster-management-backup
+  annotations:
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+spec:
+  veleroSchedule: "0 */2 * * *"
+  veleroTtl: 120h
+  useManagedServiceAccount: true
+  paused: false

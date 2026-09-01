@@ -1,0 +1,51 @@
+# Phase 1 — OADP install. Sync this Application first.
+#
+#   oc apply -f argocd/application.yaml
+#
+# Wait for OADP CSV Succeeded and BSL Available, then enable cluster-backup
+# on MCH before syncing application-schedule.yaml.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: acm-hub-backup
+  namespace: openshift-gitops
+  labels:
+    app.kubernetes.io/part-of: acm-hub-backup
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/ravishar-rh/gitops-app-of-apps.git
+    targetRevision: main
+    path: operator-manifests/acm-oadp-backup/overlays/rosa-hcp
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: open-cluster-management-backup
+  ignoreDifferences:
+    - group: operators.coreos.com
+      kind: Subscription
+      jsonPointers:
+        - /status
+        - /spec/startingCSV
+    - group: oadp.openshift.io
+      kind: DataProtectionApplication
+      jsonPointers:
+        - /status
+    - group: external-secrets.io
+      kind: ExternalSecret
+      jsonPointers:
+        - /status
+  syncPolicy:
+    automated:
+      prune: false
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+      - RespectIgnoreDifferences=true
+      - SkipDryRunOnMissingResource=true
+    retry:
+      limit: 10
+      backoff:
+        duration: 15s
+        factor: 2
+        maxDuration: 5m

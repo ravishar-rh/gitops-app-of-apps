@@ -1,0 +1,28 @@
+# Step 2 of 3 — enable AFTER OADP GitOps is healthy, BEFORE BackupSchedule GitOps.
+#
+# Do not apply this file as a standalone MultiClusterHub.
+# Merge only the cluster-backup component into the MCH you already manage.
+#
+# Order:
+#   1. App-of-apps syncs overlays/rosa-hcp → OADP CSV Succeeded, BSL Available
+#   2. Apply this change to MultiClusterHub (cluster-backup: true)  ← you are here
+#   3. App-of-apps syncs overlays/schedule → BackupSchedule
+#
+# On ROSA HCP (STS), MCH does NOT auto-install OADP. Step 1 must complete first
+# or the backup component stays Pending.
+#
+# Example patch (preferred over applying this whole file):
+#
+#   oc patch mch multiclusterhub -n open-cluster-management --type=merge \
+#     -p '{"spec":{"overrides":{"components":[{"name":"cluster-backup","enabled":true}]}}}'
+#
+# apiVersion: operator.open-cluster-management.io/v1
+# kind: MultiClusterHub
+# metadata:
+#   name: multiclusterhub
+#   namespace: open-cluster-management
+# spec:
+#   overrides:
+#     components:
+#       - name: cluster-backup
+#         enabled: true

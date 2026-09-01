@@ -1,0 +1,39 @@
+# Phase 3 — BackupSchedule. Apply AFTER:
+#   1. application-oadp is Synced and Healthy (BSL Available)
+#   2. cluster-backup: true on MultiClusterHub
+#
+#   oc apply -f argocd/application-schedule.yaml
+#
+# Manual sync only — do not enable automated sync until phase 2 is done.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: acm-hub-backup-schedule
+  namespace: openshift-gitops
+  labels:
+    app.kubernetes.io/part-of: acm-hub-backup
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/ravishar-rh/gitops-app-of-apps.git
+    targetRevision: main
+    path: operator-manifests/acm-oadp-backup/overlays/schedule
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: open-cluster-management-backup
+  ignoreDifferences:
+    - group: cluster.open-cluster-management.io
+      kind: BackupSchedule
+      jsonPointers:
+        - /status
+  syncPolicy:
+    syncOptions:
+      - ServerSideApply=true
+      - RespectIgnoreDifferences=true
+      - SkipDryRunOnMissingResource=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 15s
+        factor: 2
+        maxDuration: 3m

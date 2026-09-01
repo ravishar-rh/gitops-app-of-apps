@@ -1,0 +1,13 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: open-cluster-management-backup
+
+# OADP only. BackupSchedule lives in ../backup/ — sync that overlay after
+# cluster-backup is enabled on MultiClusterHub.
+resources:
+  - namespace.yaml
+  - operatorgroup.yaml
+  - subscription.yaml
+  - externalsecret.yaml
+  - dpa.yaml

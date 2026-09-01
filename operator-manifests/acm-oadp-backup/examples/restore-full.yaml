@@ -1,0 +1,13 @@
+# Full restore on a replacement hub (same ACM version, same operator
+# namespaces, DPA pointed at the same bucket/prefix). Shut down the old
+# hub first so it cannot reimport managed clusters.
+apiVersion: cluster.open-cluster-management.io/v1beta1
+kind: Restore
+metadata:
+  name: restore-acm
+  namespace: open-cluster-management-backup
+spec:
+  cleanupBeforeRestore: CleanupRestored
+  veleroManagedClustersBackupName: latest
+  veleroCredentialsBackupName: latest
+  veleroResourcesBackupName: latest

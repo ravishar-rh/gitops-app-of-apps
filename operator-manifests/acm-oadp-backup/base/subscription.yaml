@@ -1,0 +1,21 @@
+# OADP must live in open-cluster-management-backup. The cluster-backup
+# controller ignores OADP/Velero in any other namespace (including openshift-adp).
+#
+# Channel:
+#   OCP 4.19 / 4.2x + ACM 2.15/2.16  -> stable
+#   OCP 4.14–4.18                    -> stable-1.4
+# Match or exceed the channel ACM's oadp-channel-validation policy expects.
+# Do not install a second OADP elsewhere: Velero CRDs are cluster-scoped.
+apiVersion: operators.coreos.com/v1alpha1
+kind: Subscription
+metadata:
+  name: redhat-oadp-operator-subscription
+  namespace: open-cluster-management-backup
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  channel: stable
+  installPlanApproval: Automatic
+  name: redhat-oadp-operator
+  source: redhat-operators
+  sourceNamespace: openshift-marketplace

@@ -1,0 +1,7 @@
+# Phase 1 — OADP install (rosa-hcp overlay).
+# BackupSchedule lives in overlays/schedule — sync separately after MCH cluster-backup.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - overlays/rosa-hcp

@@ -1,0 +1,43 @@
+# DataProtectionApplication is the GitOps source of truth for storage.
+# OADP creates and reconciles BackupStorageLocation.velero.io from
+# spec.backupLocations. Do not also GitOps a standalone BSL — the operator
+# and Argo CD will fight, and cluster-backup will flap between Available
+# and Unavailable.
+#
+# cluster-backup only uses a BSL in this namespace with default: true.
+apiVersion: oadp.openshift.io/v1alpha1
+kind: DataProtectionApplication
+metadata:
+  name: dpa-acm
+  namespace: open-cluster-management-backup
+  annotations:
+    argocd.argoproj.io/sync-wave: "10"
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+spec:
+  # Hub backup is Kubernetes objects, not registry blobs.
+  backupImages: false
+  configuration:
+    # ACM hub state is CRDs/CRs, not application PVs. Keep the node-agent
+    # DaemonSet off unless you also back up volumes on the hub.
+    nodeAgent:
+      enable: false
+    velero:
+      defaultPlugins:
+        - openshift
+        - aws
+        - csi
+      resourceTimeout: 10m
+  backupLocations:
+    - name: default
+      velero:
+        provider: aws
+        default: true
+        objectStorage:
+          bucket: REPLACE_ME_BUCKET
+          prefix: acm-hub
+        config:
+          region: REPLACE_ME_REGION
+          profile: default
+        credential:
+          name: cloud-credentials
+          key: cloud

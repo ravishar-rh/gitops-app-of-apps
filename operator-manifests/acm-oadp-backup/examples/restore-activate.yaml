@@ -1,0 +1,12 @@
+# Failover: attach managed clusters to this hub. Pause or delete
+# BackupSchedule on the old hub first, or you will hit BackupCollision.
+apiVersion: cluster.open-cluster-management.io/v1beta1
+kind: Restore
+metadata:
+  name: restore-acm-passive-activate
+  namespace: open-cluster-management-backup
+spec:
+  cleanupBeforeRestore: CleanupRestored
+  veleroManagedClustersBackupName: latest
+  veleroCredentialsBackupName: skip
+  veleroResourcesBackupName: skip

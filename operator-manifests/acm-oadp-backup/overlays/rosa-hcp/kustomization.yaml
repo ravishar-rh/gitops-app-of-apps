@@ -1,0 +1,36 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../../base
+
+# Phase 1 — OADP only (no BackupSchedule). Complete docs/ROSA-HCP.md first.
+# After BSL Available: enable cluster-backup on MCH, then sync overlays/schedule.
+patches:
+  - target:
+      group: operators.coreos.com
+      version: v1alpha1
+      kind: Subscription
+      name: redhat-oadp-operator-subscription
+    patch: |-
+      - op: add
+        path: /spec/config
+        value:
+          env:
+            - name: ROLEARN
+              value: REPLACE_ME_OADP_IAM_ROLE_ARN
+  - target:
+      group: oadp.openshift.io
+      version: v1alpha1
+      kind: DataProtectionApplication
+      name: dpa-acm
+    patch: |-
+      - op: replace
+        path: /spec/backupLocations/0/velero/objectStorage/bucket
+        value: REPLACE_ME_BUCKET
+      - op: replace
+        path: /spec/backupLocations/0/velero/config/region
+        value: REPLACE_ME_REGION
+      - op: add
+        path: /spec/backupLocations/0/velero/config/enableSharedConfig
+        value: "true"

@@ -1,0 +1,8 @@
+# Phase 3 — BackupSchedule. Sync via a separate app-of-apps Application AFTER:
+#   - overlays/rosa-hcp is healthy (OADP CSV + BSL Available)
+#   - cluster-backup: true on MultiClusterHub
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../../backup
