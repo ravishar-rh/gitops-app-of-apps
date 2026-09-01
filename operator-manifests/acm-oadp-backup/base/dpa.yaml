@@ -33,10 +33,10 @@ spec:
         provider: aws
         default: true
         objectStorage:
-          bucket: REPLACE_ME_BUCKET
+          bucket: ravi-rosa-hub-hcp-acm-backup
           prefix: acm-hub
         config:
-          region: REPLACE_ME_REGION
+          region: us-east-2
           profile: default
         credential:
           name: cloud-credentials
