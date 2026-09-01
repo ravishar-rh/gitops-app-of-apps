@@ -18,7 +18,7 @@ patches:
         value:
           env:
             - name: ROLEARN
-              value: REPLACE_ME_OADP_IAM_ROLE_ARN
+              value: arn:aws:iam::711387092369:role/ravi-rosa-hub-hcp-acm-backup-oadp
   - target:
       group: oadp.openshift.io
       version: v1alpha1
@@ -27,10 +27,10 @@ patches:
     patch: |-
       - op: replace
         path: /spec/backupLocations/0/velero/objectStorage/bucket
-        value: REPLACE_ME_BUCKET
+        value: ravi-rosa-hub-hcp-acm-backup
       - op: replace
         path: /spec/backupLocations/0/velero/config/region
-        value: REPLACE_ME_REGION
+        value: us-east-2
       - op: add
         path: /spec/backupLocations/0/velero/config/enableSharedConfig
         value: "true"
