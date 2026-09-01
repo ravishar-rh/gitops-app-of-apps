@@ -7,3 +7,4 @@ resources:
   - clusterrole.yaml
   - clusterrolebinding.yaml
   - overlays/rosa-hcp
+  - backup/backupschedule.yaml
