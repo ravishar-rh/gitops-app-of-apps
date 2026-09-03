@@ -4,6 +4,8 @@ Operational procedures for **validating backups**, **restoring ACM hub state**, 
 
 | Document | Purpose |
 | --- | --- |
+| [BACKUP-PLAN.md](BACKUP-PLAN.md) | Backup scope, RPO/RTO, and component inventory |
+| [BACKUP-RESPONSIBILITIES.md](BACKUP-RESPONSIBILITIES.md) | Division of backup duties between Red Hat, AWS, and Customer |
 | [ROSA-HCP.md](ROSA-HCP.md) | IAM, S3, STS, and install prerequisites |
 | [../RUNBOOK.md](../RUNBOOK.md) | Day-2 operations, install validation, detailed troubleshooting |
 | This runbook | Backup validation, restore, and disaster recovery |

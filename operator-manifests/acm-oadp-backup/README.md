@@ -2,7 +2,12 @@
 
 GitOps manifests for Red Hat Advanced Cluster Management hub backup on **ROSA with Hosted Control Planes**. Everything the cluster-backup controller uses lives in `open-cluster-management-backup`.
 
-**Start here:** [docs/ROSA-HCP.md](docs/ROSA-HCP.md) — AWS IAM, S3, Secrets Manager, STS prerequisites.
+| Document | Purpose |
+| --- | --- |
+| [docs/BACKUP-PLAN.md](docs/BACKUP-PLAN.md) | Backup scope, RPO/RTO, and component inventory |
+| [docs/BACKUP-RESPONSIBILITIES.md](docs/BACKUP-RESPONSIBILITIES.md) | Division of backup duties between Red Hat, AWS, and Customer |
+| [docs/ROSA-HCP.md](docs/ROSA-HCP.md) | AWS IAM, S3, Secrets Manager, STS prerequisites |
+| [docs/RECOVERY-RUNBOOK.md](docs/RECOVERY-RUNBOOK.md) | Backup validation, restore, and disaster recovery |
 
 ## Three-phase install order (required)
 

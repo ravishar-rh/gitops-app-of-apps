@@ -4,6 +4,8 @@ Operational guide for the `open-cluster-management-backup` namespace on **ROSA H
 
 | Document | Purpose |
 | --- | --- |
+| [docs/BACKUP-PLAN.md](docs/BACKUP-PLAN.md) | Backup scope, RPO/RTO, and component inventory |
+| [docs/BACKUP-RESPONSIBILITIES.md](docs/BACKUP-RESPONSIBILITIES.md) | Division of backup duties between Red Hat, AWS, and Customer |
 | [docs/ROSA-HCP.md](docs/ROSA-HCP.md) | IAM, S3, STS, and install prerequisites |
 | [docs/RECOVERY-RUNBOOK.md](docs/RECOVERY-RUNBOOK.md) | Backup validation, restore, and disaster recovery |
 | This runbook | Day-2 operations, install validation, detailed troubleshooting |
