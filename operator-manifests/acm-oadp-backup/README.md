@@ -101,6 +101,8 @@ Sync waves on phase 1 manifests (`-1` → `10`) order OADP resources within that
 
 See [RUNBOOK.md](RUNBOOK.md) for validation, backup verification, and restore.
 
+**Recovery:** [docs/RECOVERY-RUNBOOK.md](docs/RECOVERY-RUNBOOK.md) — backup validation, restoration, and disaster recovery procedures.
+
 ## Overlays
 
 | Overlay | Phase | Use case |
@@ -116,4 +118,6 @@ Hive `ClusterDeployment` secrets created by GitOps are not auto-labeled. Add `cl
 
 ## Restore
 
-See [RUNBOOK.md](RUNBOOK.md). On ROSA STS, restore hub must use the **same AWS region** as the backup hub.
+See [RUNBOOK.md](RUNBOOK.md) Section 3 for restore overview. For step-by-step recovery procedures, use [docs/RECOVERY-RUNBOOK.md](docs/RECOVERY-RUNBOOK.md).
+
+On ROSA STS, restore hub must use the **same AWS region** as the backup hub.

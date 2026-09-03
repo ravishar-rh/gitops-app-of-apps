@@ -2,8 +2,13 @@
 
 Operational guide for the `open-cluster-management-backup` namespace on **ROSA HCP**.
 
-- **Prerequisites (IAM, S3, STS, network):** [docs/ROSA-HCP.md](docs/ROSA-HCP.md)
-- **Install order:** Phase 1 `overlays/rosa-hcp` (OADP) → Phase 2 MCH `cluster-backup: true` → Phase 3 `overlays/schedule`
+| Document | Purpose |
+| --- | --- |
+| [docs/ROSA-HCP.md](docs/ROSA-HCP.md) | IAM, S3, STS, and install prerequisites |
+| [docs/RECOVERY-RUNBOOK.md](docs/RECOVERY-RUNBOOK.md) | Backup validation, restore, and disaster recovery |
+| This runbook | Day-2 operations, install validation, detailed troubleshooting |
+
+**Install order:** Phase 1 `overlays/rosa-hcp` (OADP) → Phase 2 MCH `cluster-backup: true` → Phase 3 `BackupSchedule`
 
 ```bash
 export NS=open-cluster-management-backup

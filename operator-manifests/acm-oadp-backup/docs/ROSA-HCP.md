@@ -164,7 +164,7 @@ If both fight over the same Secret:
 
 - Use the same **region and bucket/prefix** on the restore hub.
 - **Cross-region restore is not supported** on ROSA STS.
-- Follow [RUNBOOK.md](../RUNBOOK.md) Section 3; pause `BackupSchedule` on the old hub before activating managed clusters.
+- Follow [docs/RECOVERY-RUNBOOK.md](docs/RECOVERY-RUNBOOK.md) for restore and disaster recovery; pause `BackupSchedule` on the old hub before activating managed clusters.
 
 ---
 
