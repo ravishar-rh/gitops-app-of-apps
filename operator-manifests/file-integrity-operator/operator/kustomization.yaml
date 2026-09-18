@@ -4,3 +4,5 @@ resources:
   - namespace.yaml
   - operatorgroup.yaml
   - subscription.yaml
+  - clusterrole.yaml
+  - clusterrolebinding.yaml

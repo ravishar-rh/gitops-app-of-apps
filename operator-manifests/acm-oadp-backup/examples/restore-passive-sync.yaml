@@ -1,0 +1,15 @@
+# Passive hub: restore credentials + resources, keep following new backups.
+# Does not activate managed clusters (veleroManagedClustersBackupName: skip).
+# Apply on the standby hub only. Do not sync this with the active hub app.
+apiVersion: cluster.open-cluster-management.io/v1beta1
+kind: Restore
+metadata:
+  name: restore-acm-passive-sync
+  namespace: open-cluster-management-backup
+spec:
+  syncRestoreWithNewBackups: true
+  restoreSyncInterval: 10m
+  cleanupBeforeRestore: CleanupRestored
+  veleroManagedClustersBackupName: skip
+  veleroCredentialsBackupName: latest
+  veleroResourcesBackupName: latest

@@ -1,0 +1,32 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../../base
+
+# JSON patches avoid duplicating backupLocations (list merge is unreliable).
+patches:
+  - target:
+      group: oadp.openshift.io
+      version: v1alpha1
+      kind: DataProtectionApplication
+      name: dpa-acm
+    patch: |-
+      - op: replace
+        path: /spec/backupLocations/0/velero/objectStorage/bucket
+        value: REPLACE_ME_BUCKET
+      - op: replace
+        path: /spec/backupLocations/0/velero/config/region
+        value: minio
+      - op: add
+        path: /spec/backupLocations/0/velero/config/s3Url
+        value: https://s3.example.example:443
+      - op: add
+        path: /spec/backupLocations/0/velero/config/s3ForcePathStyle
+        value: "true"
+      - op: add
+        path: /spec/backupLocations/0/velero/config/insecureSkipTLSVerify
+        value: "false"
+      - op: add
+        path: /spec/backupLocations/0/velero/config/checksumAlgorithm
+        value: ""
