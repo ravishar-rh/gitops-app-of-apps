@@ -154,6 +154,148 @@ oc wait --for=condition=Available deployment/compliance-operator-controller-mana
 oc apply -k compliance-operator/config/
 ```
 
+### Via App of Apps
+
+This directory is picked up automatically by the `operators` ApplicationSet (`operators-appset.yaml`). Argo CD creates an Application named `compliance-operator` that syncs both `operator/` and `config/` from a single kustomization.
+
+**Important:** Installing the operator alone does **not** create PVCs or reports. Those appear only after ScanSettingBindings are applied **and** a ComplianceScan actually runs. The default ScanSetting schedule is `0 1 * * *` (daily at 1:00 AM), so a fresh install can look healthy with zero PVCs until the first scan completes.
+
+## Getting Reports After Install
+
+Follow these steps after the App of Apps (or CLI) deploy to verify the pipeline and produce reports.
+
+### Flow
+
+```
+App of Apps → compliance-operator app
+  ├─ OLM Subscription          → operator pods
+  ├─ ScanSetting               → schedule, node roles, PVC size
+  └─ ScanSettingBinding        → Profiles → ComplianceSuite → ComplianceScan
+                                      ↓ (on schedule or rescan)
+                                 PVC (raw ARF) + ComplianceCheckResult (reports)
+```
+
+### 1. Confirm the operator is ready
+
+```bash
+oc get csv -n openshift-compliance
+oc get pods -n openshift-compliance
+oc wait --for=condition=Available deployment/compliance-operator \
+  -n openshift-compliance --timeout=300s
+```
+
+### 2. Confirm ProfileBundles and Profiles are loaded
+
+Profiles are not part of the Subscription; they come from ProfileBundles after the operator starts. ScanSettingBindings will not create suites until profiles exist.
+
+```bash
+oc get profilebundle -n openshift-compliance
+oc get profiles.compliance -n openshift-compliance
+```
+
+You should see profiles such as `ocp4-cis`, `ocp4-cis-node`, `ocp4-moderate`, and `ocp4-moderate-node`.
+
+### 3. Confirm scan config synced from GitOps
+
+Use the Argo CD API group explicitly — bare `oc get application` may resolve to `app.k8s.io` instead of Argo CD:
+
+```bash
+oc get applications.argoproj.io -n openshift-gitops
+oc get applications.argoproj.io compliance-operator -n openshift-gitops
+
+oc get scansetting -n openshift-compliance
+oc get scansettingbinding -n openshift-compliance
+```
+
+Expected bindings from this repo (when enabled in `config/kustomization.yaml`):
+
+- `cis-compliance`
+- `nist-moderate-compliance`
+- `soc2-compliance-mapping`
+
+**`STATUS: PENDING`** on a ScanSettingBinding means the binding exists but the operator has not created a ComplianceSuite yet — almost always because referenced Profiles are not ready. That is normal for a few minutes after install; it is not a GitOps sync failure.
+
+```bash
+# Why is it PENDING?
+oc describe scansettingbinding cis-compliance -n openshift-compliance
+
+# Profiles must exist before bindings leave PENDING
+oc get profilebundle -n openshift-compliance
+oc get profiles.compliance -n openshift-compliance | head
+```
+
+If ProfileBundles show errors or Profiles never appear, check content pods:
+
+```bash
+oc get pods -n openshift-compliance
+oc logs -n openshift-compliance deploy/compliance-operator -c compliance-operator --tail=100
+```
+
+If bindings are **missing entirely**, the Argo CD app likely synced before CRDs existed. Hard-refresh / re-sync the app, or re-apply config:
+
+```bash
+oc apply -k operator-manifests/compliance-operator/config/
+```
+
+### 4. Confirm suites and scans were created from bindings
+
+Once bindings leave `PENDING`, a ScanSettingBinding creates a ComplianceSuite, which creates ComplianceScan resources.
+
+```bash
+oc get scansettingbinding -n openshift-compliance   # should no longer be PENDING
+oc get compliancesuites -n openshift-compliance
+oc get compliancescans -n openshift-compliance
+```
+
+If suites exist but are waiting on the cron schedule, trigger an immediate rescan:
+
+```bash
+oc annotate compliancesuites --all \
+  -n openshift-compliance \
+  compliance.openshift.io/rescan= --overwrite
+```
+
+### 5. Wait for scans to finish — PVCs and results appear
+
+```bash
+# Watch scan progress
+oc get compliancescans -n openshift-compliance -w
+
+# PVCs appear when scans store raw ARF results
+oc get pvc -n openshift-compliance
+
+# Per-rule results (in-cluster reports)
+oc get compliancecheckresults -n openshift-compliance
+oc get compliancecheckresults -n openshift-compliance \
+  -l compliance.openshift.io/check-status=FAIL
+```
+
+Raw ARF/XCCDF lives on the PVCs. Human-readable results are the `ComplianceCheckResult` CRs (also visible under **Installed Operators → Compliance Operator** in the OpenShift console).
+
+### 6. Export raw or HTML reports (optional)
+
+```bash
+oc krew install compliance
+
+oc compliance fetch-raw scansettingbindings cis-compliance \
+  -n openshift-compliance -o ./raw-results/
+
+oc compliance view-result scansettingbindings cis-compliance \
+  -n openshift-compliance --output html > report.html
+```
+
+### Troubleshooting
+
+| Symptom | Likely cause |
+|---|---|
+| `oc get application` → `applications.app.k8s.io` NotFound | Wrong CRD; use `oc get applications.argoproj.io -n openshift-gitops` |
+| Operator OK, no ScanSettingBinding | Config sync raced CRDs; re-sync the Argo CD app |
+| Bindings exist with `STATUS: PENDING` | Profiles / ProfileBundles not ready yet; wait or check `oc describe scansettingbinding` |
+| Bindings Ready, no ComplianceSuite | Unexpected — check operator logs |
+| Suites exist, no PVC | Scan not run yet (`0 1 * * *`); annotate for rescan |
+| Scans stuck or Error | StorageClass / PVC provisioning, node roles, or profile name mismatch |
+| Only worker nodes scanned | ScanSetting `roles` lists only `worker` — add `master` for control-plane node scans |
+
 ## Included Configurations
 
 ### CIS Benchmark (`scansettingbinding-cis.yaml`)
