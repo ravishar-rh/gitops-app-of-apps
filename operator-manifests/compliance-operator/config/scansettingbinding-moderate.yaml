@@ -1,3 +1,4 @@
+# ROSA HCP: Platform profiles (ocp4-moderate) are not loaded — Node / RHCOS only.
 apiVersion: compliance.openshift.io/v1alpha1
 kind: ScanSettingBinding
 metadata:
@@ -6,10 +7,10 @@ metadata:
 profiles:
   - apiGroup: compliance.openshift.io/v1alpha1
     kind: Profile
-    name: ocp4-moderate
+    name: ocp4-moderate-node
   - apiGroup: compliance.openshift.io/v1alpha1
     kind: Profile
-    name: ocp4-moderate-node
+    name: rhcos4-moderate
 settingsRef:
   apiGroup: compliance.openshift.io/v1alpha1
   kind: ScanSetting

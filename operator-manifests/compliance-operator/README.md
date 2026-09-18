@@ -1,6 +1,16 @@
 # Compliance Operator
 
-Deploys the OpenShift Compliance Operator via OLM on OpenShift Container Platform 4.22, with pre-configured scan settings for CIS and NIST Moderate benchmarks.
+Deploys the OpenShift Compliance Operator via OLM for **ROSA HCP** (hosted control plane), with Node-only scan settings for CIS and NIST Moderate benchmarks.
+
+## Target platform: ROSA HCP
+
+This configuration is tailored for **Red Hat OpenShift Service on AWS with hosted control planes (ROSA HCP)**:
+
+- There are **no customer-managed control-plane / master nodes** — only worker nodes.
+- The Compliance Operator loads **Node profiles only**. Platform profiles such as `ocp4-cis` and `ocp4-moderate` are **not created**, because the control plane is Red Hat managed and Platform scans are out of scope.
+- The default `ScanSetting` targets the `worker` role only (no `master`).
+
+Do **not** reference Platform profiles in ScanSettingBindings on ROSA HCP — bindings will stay `PENDING` with `NamedObjectReference … not found`.
 
 ## What is the Compliance Operator?
 
@@ -14,28 +24,27 @@ The operator continuously watches for configuration drift and can automatically 
 
 A **Profile** is a predefined set of compliance rules mapped to a specific security standard. Profiles come bundled with the operator and are read-only. There are two types:
 
-- **Platform profiles** (`ocp4-*`) -- scan the OpenShift API server, etcd, OAuth, and other cluster-level configuration
-- **Node profiles** (`ocp4-*-node`, `rhcos4-*`) -- scan individual RHCOS nodes for filesystem permissions, kernel parameters, services, and more
+- **Platform profiles** (`ocp4-cis`, `ocp4-moderate`, …) -- scan the OpenShift API server, etcd, OAuth, and other cluster-level configuration. **Not available on ROSA HCP.**
+- **Node profiles** (`ocp4-*-node`, `rhcos4-*`) -- scan individual RHCOS worker nodes for filesystem permissions, kernel parameters, services, and more. **Use these on ROSA HCP.**
 
-You typically bind both the platform and node variant together to get full coverage.
+#### Profiles used by this repo (ROSA HCP)
 
-#### Available Profiles on OCP 4.22
-
-| Profile | Standard | Description |
+| Profile | Standard | Scope |
 |---|---|---|
-| `ocp4-cis` / `ocp4-cis-node` | CIS Benchmark v1.7.0 | Center for Internet Security best practices for Kubernetes |
-| `ocp4-moderate` / `ocp4-moderate-node` | NIST 800-53 Moderate (Rev 4) | Federal risk management framework (FedRAMP baseline) |
-| `ocp4-high` / `ocp4-high-node` | NIST 800-53 High (Rev 4) | Highest NIST impact level for critical systems |
-| `ocp4-pci-dss` / `ocp4-pci-dss-node` | PCI-DSS v3.2.1 / v4.0 | Payment Card Industry Data Security Standard |
-| `ocp4-nerc-cip` / `ocp4-nerc-cip-node` | NERC-CIP | North American Electric Reliability Corporation |
-| `ocp4-stig` / `ocp4-stig-node` | DISA STIG V2R2 | Defense Information Systems Agency Security Technical Implementation Guide |
-| `ocp4-e8` / `rhcos4-e8` | Essential Eight | Australian Cyber Security Centre mitigation strategies |
-| `ocp4-bsi` / `ocp4-bsi-node` / `rhcos4-bsi` | BSI IT-Grundschutz | German Federal Office for Information Security |
+| `ocp4-cis-node` | CIS Benchmark | OpenShift config on each worker |
+| `ocp4-moderate-node` | NIST 800-53 Moderate (Rev 4) | OpenShift config on each worker |
+| `rhcos4-moderate` | NIST 800-53 Moderate (Rev 4) | RHCOS host config on each worker |
+
+#### Other profiles (self-managed / full OCP only)
+
+On a self-managed cluster you would typically also bind Platform variants (`ocp4-cis`, `ocp4-moderate`, `ocp4-pci-dss`, …). Those names will **not** exist on ROSA HCP.
 
 List profiles on your cluster:
 
 ```bash
 oc get profiles.compliance -n openshift-compliance
+# Expect Node / RHCOS profiles only on ROSA HCP:
+oc get profiles.compliance -n openshift-compliance | grep -E 'node|rhcos4'
 ```
 
 ### ScanSetting
@@ -43,11 +52,11 @@ oc get profiles.compliance -n openshift-compliance
 A **ScanSetting** defines the operational parameters for how scans run:
 
 - **`schedule`** -- cron expression for recurring scans (e.g., `0 1 * * *` for daily at 1 AM)
-- **`roles`** -- which node roles to scan (`worker`, `master`)
+- **`roles`** -- which node roles to scan (`worker` only on ROSA HCP; do not add `master`)
 - **`scanTolerations`** -- tolerations for scheduling scan pods on tainted nodes
 - **`rawResultStorage`** -- PVC configuration for storing raw ARF (Asset Reporting Format) results
 
-The operator ships with a `default` ScanSetting. You can create additional ScanSettings for different scan frequencies or node targeting.
+This repo ships a `default` ScanSetting with `roles: [worker]`.
 
 ### ScanSettingBinding
 
@@ -85,10 +94,11 @@ For failed checks, the operator may generate **ComplianceRemediation** resources
 
 ## Compatibility
 
-| Component | Version |
+| Component | Version / notes |
 |---|---|
-| OpenShift | 4.22 |
-| Compliance Operator | 1.9.x (stable channel) |
+| Platform | ROSA HCP (hosted control plane, workers only) |
+| OpenShift | 4.x on ROSA HCP |
+| Compliance Operator | 1.10.x (stable channel); Node profiles only on ROSA HCP |
 | Catalog Source | redhat-operators |
 
 ## Directory Structure
@@ -160,6 +170,8 @@ This directory is picked up automatically by the `operators` ApplicationSet (`op
 
 **Important:** Installing the operator alone does **not** create PVCs or reports. Those appear only after ScanSettingBindings are applied **and** a ComplianceScan actually runs. The default ScanSetting schedule is `0 1 * * *` (daily at 1:00 AM), so a fresh install can look healthy with zero PVCs until the first scan completes.
 
+On ROSA HCP, bindings that reference Platform profiles (`ocp4-cis`, `ocp4-moderate`, …) stay `PENDING` forever. This repo uses Node profiles only.
+
 ## Getting Reports After Install
 
 Follow these steps after the App of Apps (or CLI) deploy to verify the pipeline and produce reports.
@@ -169,8 +181,8 @@ Follow these steps after the App of Apps (or CLI) deploy to verify the pipeline 
 ```
 App of Apps → compliance-operator app
   ├─ OLM Subscription          → operator pods
-  ├─ ScanSetting               → schedule, node roles, PVC size
-  └─ ScanSettingBinding        → Profiles → ComplianceSuite → ComplianceScan
+  ├─ ScanSetting (worker only) → schedule, PVC size
+  └─ ScanSettingBinding        → Node Profiles → ComplianceSuite → ComplianceScan
                                       ↓ (on schedule or rescan)
                                  PVC (raw ARF) + ComplianceCheckResult (reports)
 ```
@@ -184,16 +196,14 @@ oc wait --for=condition=Available deployment/compliance-operator \
   -n openshift-compliance --timeout=300s
 ```
 
-### 2. Confirm ProfileBundles and Profiles are loaded
-
-Profiles are not part of the Subscription; they come from ProfileBundles after the operator starts. ScanSettingBindings will not create suites until profiles exist.
+### 2. Confirm ProfileBundles and Node Profiles are loaded
 
 ```bash
 oc get profilebundle -n openshift-compliance
-oc get profiles.compliance -n openshift-compliance
+oc get profiles.compliance -n openshift-compliance | grep -E 'node|rhcos4'
 ```
 
-You should see profiles such as `ocp4-cis`, `ocp4-cis-node`, `ocp4-moderate`, and `ocp4-moderate-node`.
+On ROSA HCP you should see `ocp4-cis-node`, `ocp4-moderate-node`, and `rhcos4-moderate`. You will **not** see Platform profiles `ocp4-cis` or `ocp4-moderate`.
 
 ### 3. Confirm scan config synced from GitOps
 
@@ -207,47 +217,29 @@ oc get scansetting -n openshift-compliance
 oc get scansettingbinding -n openshift-compliance
 ```
 
-Expected bindings from this repo (when enabled in `config/kustomization.yaml`):
+Expected bindings:
 
-- `cis-compliance`
-- `nist-moderate-compliance`
-- `soc2-compliance-mapping`
+- `cis-compliance` → `ocp4-cis-node`
+- `nist-moderate-compliance` → `ocp4-moderate-node`, `rhcos4-moderate`
+- `soc2-compliance-mapping` → `ocp4-cis-node`, `ocp4-moderate-node`
 
-**`STATUS: PENDING`** on a ScanSettingBinding means the binding exists but the operator has not created a ComplianceSuite yet — almost always because referenced Profiles are not ready. That is normal for a few minutes after install; it is not a GitOps sync failure.
+**`STATUS: PENDING`** usually means referenced Profiles are missing (for example an old binding still naming `ocp4-cis`) or ProfileBundles are still loading.
 
 ```bash
-# Why is it PENDING?
 oc describe scansettingbinding cis-compliance -n openshift-compliance
-
-# Profiles must exist before bindings leave PENDING
-oc get profilebundle -n openshift-compliance
-oc get profiles.compliance -n openshift-compliance | head
+oc get profiles.compliance ocp4-cis-node ocp4-moderate-node rhcos4-moderate \
+  -n openshift-compliance
 ```
 
-If ProfileBundles show errors or Profiles never appear, check content pods:
+### 4. Confirm suites and scans were created
 
 ```bash
-oc get pods -n openshift-compliance
-oc logs -n openshift-compliance deploy/compliance-operator -c compliance-operator --tail=100
-```
-
-If bindings are **missing entirely**, the Argo CD app likely synced before CRDs existed. Hard-refresh / re-sync the app, or re-apply config:
-
-```bash
-oc apply -k operator-manifests/compliance-operator/config/
-```
-
-### 4. Confirm suites and scans were created from bindings
-
-Once bindings leave `PENDING`, a ScanSettingBinding creates a ComplianceSuite, which creates ComplianceScan resources.
-
-```bash
-oc get scansettingbinding -n openshift-compliance   # should no longer be PENDING
+oc get scansettingbinding -n openshift-compliance
 oc get compliancesuites -n openshift-compliance
 oc get compliancescans -n openshift-compliance
 ```
 
-If suites exist but are waiting on the cron schedule, trigger an immediate rescan:
+Trigger an immediate rescan instead of waiting for 1:00 AM:
 
 ```bash
 oc annotate compliancesuites --all \
@@ -255,22 +247,14 @@ oc annotate compliancesuites --all \
   compliance.openshift.io/rescan= --overwrite
 ```
 
-### 5. Wait for scans to finish — PVCs and results appear
+### 5. Wait for scans — PVCs and results appear
 
 ```bash
-# Watch scan progress
 oc get compliancescans -n openshift-compliance -w
-
-# PVCs appear when scans store raw ARF results
 oc get pvc -n openshift-compliance
-
-# Per-rule results (in-cluster reports)
-oc get compliancecheckresults -n openshift-compliance
 oc get compliancecheckresults -n openshift-compliance \
   -l compliance.openshift.io/check-status=FAIL
 ```
-
-Raw ARF/XCCDF lives on the PVCs. Human-readable results are the `ComplianceCheckResult` CRs (also visible under **Installed Operators → Compliance Operator** in the OpenShift console).
 
 ### 6. Export raw or HTML reports (optional)
 
@@ -289,38 +273,39 @@ oc compliance view-result scansettingbindings cis-compliance \
 | Symptom | Likely cause |
 |---|---|
 | `oc get application` → `applications.app.k8s.io` NotFound | Wrong CRD; use `oc get applications.argoproj.io -n openshift-gitops` |
+| `ocp4-cis` / `ocp4-moderate` not found; bindings `PENDING` | Platform profiles are not loaded on ROSA HCP — use Node profiles |
 | Operator OK, no ScanSettingBinding | Config sync raced CRDs; re-sync the Argo CD app |
-| Bindings exist with `STATUS: PENDING` | Profiles / ProfileBundles not ready yet; wait or check `oc describe scansettingbinding` |
-| Bindings Ready, no ComplianceSuite | Unexpected — check operator logs |
 | Suites exist, no PVC | Scan not run yet (`0 1 * * *`); annotate for rescan |
-| Scans stuck or Error | StorageClass / PVC provisioning, node roles, or profile name mismatch |
-| Only worker nodes scanned | ScanSetting `roles` lists only `worker` — add `master` for control-plane node scans |
+| Scans targeting `master` fail / N/A | No master MCP on ROSA HCP — keep `roles: [worker]` only |
+| Scans stuck or Error | StorageClass / PVC provisioning, or profile name mismatch |
 
 ## Included Configurations
 
+All bindings below use **Node / RHCOS profiles only**, suitable for ROSA HCP.
+
 ### CIS Benchmark (`scansettingbinding-cis.yaml`)
 
-Binds `ocp4-cis` (platform) and `ocp4-cis-node` (node) profiles to the default scan setting. Scans run daily at 1:00 AM on both master and worker nodes.
+Binds `ocp4-cis-node` to the default scan setting. Scans run daily at 1:00 AM on **worker** nodes.
 
 ### NIST 800-53 Moderate (`scansettingbinding-moderate.yaml`)
 
-Binds `ocp4-moderate` (platform) and `ocp4-moderate-node` (node) profiles. Required for FedRAMP Moderate authorization.
+Binds `ocp4-moderate-node` and `rhcos4-moderate`. Covers OpenShift node config and RHCOS host hardening for FedRAMP Moderate–style baselines on the data plane.
 
 ### PCI-DSS (`scansettingbinding-pci-dss.yaml`)
 
-Commented out by default. Uncomment in `config/kustomization.yaml` if you process payment card data. Supports both v3.2.1 and v4.0 profiles.
+Commented out by default. Uncomment in `config/kustomization.yaml` if you process payment card data. Uses `ocp4-pci-dss-node` only (Platform `ocp4-pci-dss` is not available on ROSA HCP).
 
 ### SOC 2 Compliance Mapping (`scansettingbinding-soc2.yaml`)
 
-Combines both `ocp4-cis` and `ocp4-moderate` profiles under a single binding with a `internal-control-id: SOC2-CC6-LOGICAL-ACCESS` label. This label enables downstream GRC tools to ingest and map scan results to SOC 2 Common Criteria controls.
+Combines `ocp4-cis-node` and `ocp4-moderate-node` under a single binding with a `internal-control-id: SOC2-CC6-LOGICAL-ACCESS` label. This label enables downstream GRC tools to ingest and map scan results to SOC 2 Common Criteria controls.
 
 ### SOC 2 Tailored Baseline (`tailoredprofile-soc2.yaml`)
 
-A TailoredProfile extending `ocp4-cis` with SOC 2-specific adjustments. Rules handled by the cloud provider's IAM layer are disabled, and rules requiring manual auditor verification are flagged as `manualRules`. Customize the `disableRules` and `manualRules` lists to match your organization's control mapping.
+A Node TailoredProfile extending `ocp4-cis-node` with SOC 2-specific adjustments. Rules handled by the cloud provider's IAM layer are disabled, and rules requiring manual auditor verification are flagged as `manualRules`. Customize the `disableRules` and `manualRules` lists to match your organization's control mapping.
 
 ### Custom CIS Profile (`tailoredprofile-cis-custom.yaml`)
 
-Commented out by default. Example TailoredProfile extending `ocp4-cis` with rule exceptions. Customize this to disable rules that conflict with your environment.
+Commented out by default. Example Node TailoredProfile extending `ocp4-cis-node` with rule exceptions. Customize this to disable rules that conflict with your environment.
 
 ## Working with Results
 
@@ -381,7 +366,7 @@ Raw ARF/XCCDF reports can be extracted for offline analysis or import into exter
 oc get pvc -n openshift-compliance
 
 # Extract results from a specific scan (creates XML files locally)
-SCAN_NAME="soc2-compliance-mapping-ocp4-cis"
+SCAN_NAME="cis-compliance-ocp4-cis-node"
 POD=$(oc get pods -n openshift-compliance -l compliancescan=$SCAN_NAME \
   -o jsonpath='{.items[0].metadata.name}')
 oc cp openshift-compliance/$POD:/results ./compliance-reports/
@@ -489,6 +474,7 @@ If you run ACS, it natively integrates with the Compliance Operator. ACS pulls C
 
 - [Compliance Operator Documentation (OCP 4.21)](https://docs.redhat.com/en/documentation/openshift_container_platform/4.21/html/security_and_compliance/compliance-operator)
 - [Supported Compliance Profiles](https://docs.redhat.com/en/documentation/openshift_container_platform/4.19/html/security_and_compliance/compliance-operator)
+- [Compliance Operator release notes (ROSA HCP Node-only profiles)](https://docs.okd.io/4.22/security/compliance_operator/compliance-operator-release-notes.html)
 - [Tailoring the Compliance Operator](https://docs.openshift.com/container-platform/4.15/security/compliance_operator/co-scans/compliance-operator-tailor.html)
 - [Compliance Operator CRDs Reference](https://github.com/openshift/compliance-operator/blob/master/doc/crds.md)
 - [GitHub - ComplianceAsCode/compliance-operator](https://github.com/ComplianceAsCode/compliance-operator)

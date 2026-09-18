@@ -1,15 +1,16 @@
+# ROSA HCP: extend a Node profile (Platform profiles are not available).
 apiVersion: compliance.openshift.io/v1alpha1
 kind: TailoredProfile
 metadata:
   name: cis-custom
   namespace: openshift-compliance
   annotations:
-    compliance.openshift.io/product-type: Platform
+    compliance.openshift.io/product-type: Node
 spec:
-  extends: ocp4-cis
-  title: Customized CIS Benchmark Profile
+  extends: ocp4-cis-node
+  title: Customized CIS Benchmark Profile (ROSA HCP)
   description: >-
-    CIS benchmark profile with site-specific rule adjustments.
+    CIS node benchmark with site-specific rule adjustments for ROSA HCP.
     Modify the disableRules and enableRules lists to match
     your organization's requirements.
   disableRules:

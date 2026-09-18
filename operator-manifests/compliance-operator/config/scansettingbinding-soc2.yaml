@@ -1,3 +1,4 @@
+# ROSA HCP: map SOC 2 controls to available Node profiles only.
 apiVersion: compliance.openshift.io/v1alpha1
 kind: ScanSettingBinding
 metadata:
@@ -8,10 +9,10 @@ metadata:
 profiles:
   - apiGroup: compliance.openshift.io/v1alpha1
     kind: Profile
-    name: ocp4-cis
+    name: ocp4-cis-node
   - apiGroup: compliance.openshift.io/v1alpha1
     kind: Profile
-    name: ocp4-moderate
+    name: ocp4-moderate-node
 settingsRef:
   apiGroup: compliance.openshift.io/v1alpha1
   kind: ScanSetting
